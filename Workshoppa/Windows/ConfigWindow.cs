@@ -45,6 +45,13 @@ internal sealed class ConfigWindow : LWindow, IPersistableWindowConfig
             _configuration.EnableCeruleumTankCalculator = enableCeruleumTankCalculator;
             _pluginInterface.SavePluginConfig(_configuration);
         }
+
+        bool notifyInBackground = _configuration.NotifyOnQueueCompletionInBackground;
+        if (ImGui.Checkbox("Notify when queue finishes in the background", ref notifyInBackground))
+        {
+            _configuration.NotifyOnQueueCompletionInBackground = notifyInBackground;
+            _pluginInterface.SavePluginConfig(_configuration);
+        }
     }
 
     public void SaveWindowConfig() => _pluginInterface.SavePluginConfig(_configuration);

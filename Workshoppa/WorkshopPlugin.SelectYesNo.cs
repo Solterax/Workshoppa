@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.Memory;
@@ -63,6 +64,13 @@ partial class WorkshopPlugin
             else if (CurrentStage == Stage.ConfirmCollectProduct && _gameStrings.RetrieveFinishedItem.IsMatch(text))
             {
                 _pluginLog.Information($"Selecting 'yes' ({text})");
+                if (_configuration.NotifyOnQueueCompletionInBackground &&
+                    _configuration.CurrentlyCraftedItem is { } current)
+                {
+                    var craft = _workshopCache.Crafts.FirstOrDefault(x => x.WorkshopItemId == current.WorkshopItemId);
+                    if (craft != null)
+                        _queueNotification.WatchCollection(craft.ResultItem);
+                }
                 addonSelectYesNo->AtkUnitBase.FireCallbackInt(0);
 
                 ConfirmCollectProductFollowUp();

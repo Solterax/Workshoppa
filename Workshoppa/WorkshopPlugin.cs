@@ -38,6 +38,7 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
 
     private readonly Configuration _configuration;
     private readonly CraftTiming _craftTiming;
+    private readonly QueueCompletionNotification _queueNotification;
     private readonly ExternalPluginHandler _externalPluginHandler;
     private readonly RetainerTransfer _retainerTransfer;
     private readonly WorkshopCache _workshopCache;
@@ -72,6 +73,7 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
         _retainerTransfer = new RetainerTransfer(gameGui, condition, dataManager, pluginLog);
         _configuration = (Configuration?)_pluginInterface.GetPluginConfig() ?? new Configuration();
         _craftTiming = new CraftTiming(_configuration);
+        _queueNotification = new QueueCompletionNotification(_configuration, _pluginLog);
         if (_craftTiming.DiscardInterruptedSample())
             _pluginInterface.SavePluginConfig(_configuration);
         _workshopCache = new WorkshopCache(dataManager, _pluginLog);
@@ -139,6 +141,7 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
 
     private void FrameworkUpdate(IFramework framework)
     {
+        _queueNotification.Update(_clientState.IsLoggedIn, _pluginInterface.UiBuilder.WindowHandlePtr);
         _retainerTransfer.Update();
 
         if (!_clientState.IsLoggedIn ||
@@ -332,6 +335,7 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
         _pluginInterface.UiBuilder.OpenConfigUi -= _configWindow.Toggle;
         _pluginInterface.UiBuilder.OpenMainUi -= OpenMainUi;
         _framework.Update -= FrameworkUpdate;
+        _queueNotification.Dispose();
 
         _ceruleumTankWindow.Dispose();
         _repairKitWindow.Dispose();
