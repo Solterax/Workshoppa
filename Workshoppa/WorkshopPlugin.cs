@@ -38,6 +38,7 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
 
     private readonly Configuration _configuration;
     private readonly ExternalPluginHandler _externalPluginHandler;
+    private readonly RetainerTransfer _retainerTransfer;
     private readonly WorkshopCache _workshopCache;
     private readonly GameStrings _gameStrings;
 
@@ -67,12 +68,13 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
         _chatGui = chatGui;
 
         _externalPluginHandler = new ExternalPluginHandler(_pluginInterface, _pluginLog);
+        _retainerTransfer = new RetainerTransfer(gameGui, condition, dataManager, pluginLog);
         _configuration = (Configuration?)_pluginInterface.GetPluginConfig() ?? new Configuration();
         _workshopCache = new WorkshopCache(dataManager, _pluginLog);
         _gameStrings = new(dataManager, _pluginLog);
 
         _mainWindow = new(this, _pluginInterface, _clientState, _objectTable, _configuration, _workshopCache,
-            new IconCache(textureProvider), _chatGui, new RecipeTree(dataManager, _pluginLog), _pluginLog);
+            new IconCache(textureProvider), _chatGui, new RecipeTree(dataManager, _pluginLog), _retainerTransfer, _pluginLog);
         _windowSystem.AddWindow(_mainWindow);
         _configWindow = new(_pluginInterface, _configuration);
         _windowSystem.AddWindow(_configWindow);
@@ -130,6 +132,8 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
 
     private void FrameworkUpdate(IFramework framework)
     {
+        _retainerTransfer.Update();
+
         if (!_clientState.IsLoggedIn ||
             !WorkshopTerritories.Contains(_clientState.TerritoryType) ||
             _condition[ConditionFlag.BoundByDuty] ||
@@ -169,7 +173,7 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
                 return;
             }
             else if (_mainWindow.State is MainWindow.ButtonState.Start or MainWindow.ButtonState.Resume &&
-                     CurrentStage == Stage.Stopped)
+                     CurrentStage == Stage.Stopped && !_retainerTransfer.IsBusy)
             {
                 // TODO Error checking, we should ensure the player has the required job level for *all* crafting parts
                 _mainWindow.State = MainWindow.ButtonState.None;

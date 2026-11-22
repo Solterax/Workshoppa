@@ -13,7 +13,6 @@ using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
-using FFXIVClientStructs.FFXIV.Client.Game;
 using LLib;
 using LLib.ImGui;
 using Workshoppa.GameData;
@@ -34,6 +33,7 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
     private readonly IconCache _iconCache;
     private readonly IChatGui _chatGui;
     private readonly RecipeTree _recipeTree;
+    private readonly RetainerTransfer _retainerTransfer;
     private readonly IPluginLog _pluginLog;
 
     private string _searchString = string.Empty;
@@ -42,7 +42,7 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
 
     public MainWindow(WorkshopPlugin plugin, IDalamudPluginInterface pluginInterface, IClientState clientState,
         IObjectTable objectTable, Configuration configuration, WorkshopCache workshopCache, IconCache iconCache, IChatGui chatGui,
-        RecipeTree recipeTree, IPluginLog pluginLog)
+        RecipeTree recipeTree, RetainerTransfer retainerTransfer, IPluginLog pluginLog)
         : base("Workshoppa###WorkshoppaMainWindow")
     {
         _plugin = plugin;
@@ -54,6 +54,7 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
         _iconCache = iconCache;
         _chatGui = chatGui;
         _recipeTree = recipeTree;
+        _retainerTransfer = retainerTransfer;
         _pluginLog = pluginLog;
 
         Position = new Vector2(100, 100);
@@ -82,7 +83,7 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
     {
         if (ImGui.BeginMenuBar())
         {
-            ImGui.BeginDisabled(_plugin.CurrentStage != Stage.Stopped);
+            ImGui.BeginDisabled(_plugin.CurrentStage != Stage.Stopped || _retainerTransfer.IsBusy);
             DrawPresetsMenu();
             DrawClipboardMenu();
             ImGui.EndDisabled();
@@ -113,7 +114,7 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
                     _checkInventory = !_checkInventory;
 
                 ImGui.SameLine();
-                ImGui.BeginDisabled(!NearFabricationStation || !IsDiscipleOfHand);
+                ImGui.BeginDisabled(!NearFabricationStation || !IsDiscipleOfHand || _retainerTransfer.IsBusy);
                 if (currentItem.StartedCrafting)
                 {
                     if (ImGuiComponents.IconButtonWithText(FontAwesomeIcon.Play, "Resume"))
@@ -136,7 +137,7 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
                 ImGui.SameLine();
 
                 bool keysHeld = ImGui.GetIO().KeyCtrl && ImGui.GetIO().KeyShift;
-                ImGui.BeginDisabled(!keysHeld);
+                ImGui.BeginDisabled(!keysHeld || _retainerTransfer.IsBusy);
                 if (ImGuiComponents.IconButtonWithText(FontAwesomeIcon.Times, "Cancel"))
                 {
                     State = ButtonState.Pause;
@@ -170,7 +171,7 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
 
             ImGui.SameLine();
             ImGui.BeginDisabled(!NearFabricationStation || _configuration.ItemQueue.Sum(x => x.Quantity) == 0 ||
-                                _plugin.CurrentStage != Stage.Stopped || !IsDiscipleOfHand);
+                                _plugin.CurrentStage != Stage.Stopped || !IsDiscipleOfHand || _retainerTransfer.IsBusy);
             if (ImGuiComponents.IconButtonWithText(FontAwesomeIcon.Play, "Start Crafting"))
             {
                 State = ButtonState.Start;
@@ -182,6 +183,8 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
             ShowErrorConditions();
         }
 
+        DrawRetainerTransfers();
+
         if (_checkInventory)
         {
             ImGui.Separator();
@@ -190,7 +193,7 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
 
         ImGui.Separator();
         ImGui.Text("Queue:");
-        ImGui.BeginDisabled(_plugin.CurrentStage != Stage.Stopped);
+        ImGui.BeginDisabled(_plugin.CurrentStage != Stage.Stopped || _retainerTransfer.IsBusy);
         Configuration.QueuedItem? itemToRemove = null;
         for (int i = 0; i < _configuration.ItemQueue.Count; ++i)
         {
@@ -530,17 +533,57 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
         OpenReason = EOpenReason.None;
     }
 
-    private unsafe void CheckMaterial()
+    private void DrawRetainerTransfers()
+    {
+        bool retainerOpen = _retainerTransfer.IsOpen;
+        if (!retainerOpen && string.IsNullOrEmpty(_retainerTransfer.Status))
+            return;
+
+        ImGui.Separator();
+        if (retainerOpen)
+        {
+            ImGui.BeginDisabled(_plugin.CurrentStage != Stage.Stopped || _retainerTransfer.IsBusy);
+            if (ImGui.Button("Deposit all materials"))
+                _retainerTransfer.Start(RetainerTransfer.TransferKind.DepositMaterials);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Deposit every transferable item in your inventory bags except submarine parts.");
+
+            ImGui.SameLine();
+            if (ImGui.Button("Deposit all submarine parts"))
+                _retainerTransfer.Start(RetainerTransfer.TransferKind.DepositSubmarineParts);
+            ImGui.EndDisabled();
+
+            ImGui.BeginDisabled(_plugin.CurrentStage != Stage.Stopped || _retainerTransfer.IsBusy ||
+                (_configuration.CurrentlyCraftedItem == null && !_configuration.ItemQueue.Any(x => x.Quantity > 0)));
+            if (ImGui.Button("Withdraw needed materials"))
+            {
+                _retainerTransfer.Start(RetainerTransfer.TransferKind.WithdrawMaterials, GetMaterialList());
+                _checkInventory = true;
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Withdraw the shortfall for the active project and queued crafts from this retainer.");
+            ImGui.EndDisabled();
+        }
+
+        if (_retainerTransfer.IsBusy)
+        {
+            if (ImGui.Button("Stop transfer"))
+                _retainerTransfer.Stop();
+        }
+
+        if (!string.IsNullOrEmpty(_retainerTransfer.Status))
+            ImGui.TextWrapped(_retainerTransfer.Status);
+    }
+
+    private void CheckMaterial()
     {
         ImGui.Text("Items needed for all crafts in queue:");
         var items = GetMaterialList();
 
         ImGui.Indent(20);
-        InventoryManager* inventoryManager = InventoryManager.Instance();
         foreach (var item in items)
         {
-            int inInventory = inventoryManager->GetInventoryItemCount(item.ItemId, true, false, false) +
-                              inventoryManager->GetInventoryItemCount(item.ItemId, false, false, false);
+            int inInventory = RetainerTransfer.CountInInventory(item.ItemId);
 
             IDalamudTextureWrap? icon = _iconCache.GetIcon(item.IconId);
             if (icon != null)
