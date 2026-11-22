@@ -1,7 +1,6 @@
 using System;
 using System.Diagnostics;
 using System.Linq;
-using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 
 namespace Workshoppa;
@@ -29,17 +28,11 @@ partial class WorkshopPlugin
             return;
         }
 
-        if (GetVisibleInventory() == null)
+        if (GetVisibleInventory() == null && !GameWindowInput.TryTapInventoryKey(_pluginInterface.UiBuilder.WindowHandlePtr))
         {
-            var inventory = GetInventoryAgent();
-            if (inventory == null || !inventory->IsActivatable())
-            {
-                if (InventoryActionTimedOut())
-                    FailCraft("The inventory could not open between crafts. Check for open game prompts, then resume.");
-                return;
-            }
-
-            inventory->Show();
+            if (InventoryActionTimedOut())
+                FailCraft("Workshoppa could not send the I key to the game to open the inventory.");
+            return;
         }
 
         _inventoryActionStartedAt = Stopwatch.GetTimestamp();
@@ -49,15 +42,20 @@ partial class WorkshopPlugin
 
     private unsafe void CloseInventoryBetweenCrafts()
     {
-        var addon = GetVisibleInventory();
-        if (addon == null || !addon->IsReady)
+        if (GetVisibleInventory() == null)
         {
             if (InventoryActionTimedOut())
-                FailCraft("The inventory did not finish opening between crafts.");
+                FailCraft("The inventory did not open after pressing I. Check your Inventory keybind and any open prompts.");
             return;
         }
 
-        addon->Close(true);
+        if (!GameWindowInput.TryTapInventoryKey(_pluginInterface.UiBuilder.WindowHandlePtr))
+        {
+            if (InventoryActionTimedOut())
+                FailCraft("Workshoppa could not send the I key to the game to close the inventory.");
+            return;
+        }
+
         _inventoryActionStartedAt = Stopwatch.GetTimestamp();
         CurrentStage = Stage.WaitForInventoryClosed;
     }
@@ -67,7 +65,7 @@ partial class WorkshopPlugin
         if (GetVisibleInventory() != null)
         {
             if (InventoryActionTimedOut())
-                FailCraft("The inventory did not close between crafts. Close it, then resume.");
+                FailCraft("The inventory did not close after pressing I. Close it, then resume.");
             return;
         }
 
@@ -79,12 +77,6 @@ partial class WorkshopPlugin
 
     private bool InventoryActionTimedOut() =>
         Stopwatch.GetElapsedTime(_inventoryActionStartedAt) >= InventoryActionTimeout;
-
-    private static unsafe AgentInterface* GetInventoryAgent()
-    {
-        var agents = AgentModule.Instance();
-        return agents == null ? null : agents->GetAgentByInternalId(AgentId.Inventory);
-    }
 
     private unsafe AtkUnitBase* GetVisibleInventory()
     {
