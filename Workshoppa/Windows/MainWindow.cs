@@ -10,6 +10,7 @@ using Dalamud.Interface.Colors;
 using Dalamud.Interface.Components;
 using Dalamud.Interface.Textures.TextureWraps;
 using Dalamud.Interface.Utility.Raii;
+using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game;
@@ -27,6 +28,7 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
     private readonly WorkshopPlugin _plugin;
     private readonly IDalamudPluginInterface _pluginInterface;
     private readonly IClientState _clientState;
+    private readonly IObjectTable _objectTable;
     private readonly Configuration _configuration;
     private readonly WorkshopCache _workshopCache;
     private readonly IconCache _iconCache;
@@ -39,13 +41,14 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
     private string _newPresetName = string.Empty;
 
     public MainWindow(WorkshopPlugin plugin, IDalamudPluginInterface pluginInterface, IClientState clientState,
-        Configuration configuration, WorkshopCache workshopCache, IconCache iconCache, IChatGui chatGui,
+        IObjectTable objectTable, Configuration configuration, WorkshopCache workshopCache, IconCache iconCache, IChatGui chatGui,
         RecipeTree recipeTree, IPluginLog pluginLog)
         : base("Workshoppa###WorkshoppaMainWindow")
     {
         _plugin = plugin;
         _pluginInterface = pluginInterface;
         _clientState = clientState;
+        _objectTable = objectTable;
         _configuration = configuration;
         _workshopCache = workshopCache;
         _iconCache = iconCache;
@@ -71,7 +74,7 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
     public ButtonState State { get; set; } = ButtonState.None;
 
     private bool IsDiscipleOfHand =>
-        _clientState.LocalPlayer != null && _clientState.LocalPlayer.ClassJob.RowId is >= 8 and <= 15;
+        _objectTable.LocalPlayer?.ClassJob.RowId is >= 8 and <= 15;
 
     public WindowConfig WindowConfig => _configuration.MainWindowConfig;
 

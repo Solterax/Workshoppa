@@ -1,9 +1,9 @@
-﻿using System;
+using System;
 using System.Linq;
 using Dalamud.Game.ClientState.Objects.Types;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using LLib.GameUI;
-using ValueType = FFXIVClientStructs.FFXIV.Component.GUI.ValueType;
+using ValueType = FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType;
 
 namespace Workshoppa;
 

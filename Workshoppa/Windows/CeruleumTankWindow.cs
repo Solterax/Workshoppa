@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
@@ -8,7 +8,7 @@ using FFXIVClientStructs.FFXIV.Component.GUI;
 using LLib.GameUI;
 using LLib.Shop.Model;
 using Workshoppa.External;
-using ValueType = FFXIVClientStructs.FFXIV.Component.GUI.ValueType;
+using ValueType = FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType;
 
 namespace Workshoppa.Windows;
 

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
@@ -6,7 +6,7 @@ using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using Workshoppa.GameData;
-using ValueType = FFXIVClientStructs.FFXIV.Component.GUI.ValueType;
+using ValueType = FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType;
 
 namespace Workshoppa;
 
