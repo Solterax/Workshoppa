@@ -2,7 +2,6 @@
 using System.Linq;
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
-using Dalamud.Memory;
 using FFXIVClientStructs.FFXIV.Client.UI;
 
 namespace Workshoppa;
@@ -14,9 +13,9 @@ partial class WorkshopPlugin
         _pluginLog.Verbose("SelectYesNo post-setup");
 
         AddonSelectYesno* addonSelectYesNo = (AddonSelectYesno*)args.Addon.Address;
-        string text = MemoryHelper.ReadSeString(&addonSelectYesNo->PromptText->NodeText).ToString()
-            .Replace("\n", "", StringComparison.Ordinal)
-            .Replace("\r", "", StringComparison.Ordinal);
+        string? text = ReadYesNoPrompt(addonSelectYesNo);
+        if (text == null)
+            return;
         _pluginLog.Verbose($"YesNo prompt: '{text}'");
 
         if (_repairKitWindow.IsOpen)

@@ -117,10 +117,9 @@ partial class WorkshopPlugin
         if (_gameGui.TryGetAddonByName<AddonSelectYesno>("SelectYesno", out var addonSelectYesno) &&
             LAddon.IsAddonReady(&addonSelectYesno->AtkUnitBase))
         {
-            var text = MemoryHelper.ReadSeString(&addonSelectYesno->PromptText->NodeText).ToString();
-            text = text
-                .Replace("\n", "", StringComparison.Ordinal)
-                .Replace("\r", "", StringComparison.Ordinal);
+            var text = ReadYesNoPrompt(addonSelectYesno);
+            if (text == null)
+                return false;
             if (predicate(text))
             {
                 _pluginLog.Information($"Selecting choice {choice} for '{text}'");
@@ -135,6 +134,11 @@ partial class WorkshopPlugin
 
         return false;
     }
+
+    private static unsafe string? ReadYesNoPrompt(AddonSelectYesno* addon) =>
+        addon->PromptText == null ? null : MemoryHelper.ReadSeString(&addon->PromptText->NodeText).ToString()
+            .Replace("\n", "", StringComparison.Ordinal)
+            .Replace("\r", "", StringComparison.Ordinal);
 
     private unsafe CraftState? ReadCraftState(AtkUnitBase* addonMaterialDelivery)
     {

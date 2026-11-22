@@ -28,6 +28,13 @@ partial class WorkshopPlugin
             return;
         }
 
+        if (!ClearCollectionDialogs())
+        {
+            if (InventoryActionTimedOut())
+                FailCraft("A game dialog is still open after collection. Close it, then resume.");
+            return;
+        }
+
         if (GetVisibleInventory() == null && !GameWindowInput.TryTapInventoryKey(_pluginInterface.UiBuilder.WindowHandlePtr))
         {
             if (InventoryActionTimedOut())
@@ -82,11 +89,17 @@ partial class WorkshopPlugin
     {
         foreach (string name in InventoryAddons)
         {
-            var addon = _gameGui.GetAddonByName<AtkUnitBase>(name);
-            if (addon != null && addon->IsVisible)
+            var addon = GetVisibleInventoryCycleAddon(name);
+            if (addon != null)
                 return addon;
         }
 
         return null;
+    }
+
+    private unsafe AtkUnitBase* GetVisibleInventoryCycleAddon(string name)
+    {
+        var addon = _gameGui.GetAddonByName<AtkUnitBase>(name);
+        return addon != null && addon->IsVisible ? addon : null;
     }
 }
