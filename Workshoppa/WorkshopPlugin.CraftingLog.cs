@@ -24,6 +24,7 @@ partial class WorkshopPlugin
                     _configuration.CurrentlyCraftedItem = new Configuration.CurrentItem
                     {
                         WorkshopItemId = firstItem.WorkshopItemId,
+                        ActiveCraftSeconds = 0,
                     };
 
                     if (firstItem.Quantity > 1)
@@ -35,6 +36,7 @@ partial class WorkshopPlugin
                     _configuration.ItemQueue.Remove(firstItem);
             }
 
+            _craftTiming.SetActive(_configuration.CurrentlyCraftedItem != null);
             _pluginInterface.SavePluginConfig(_configuration);
             if (_configuration.CurrentlyCraftedItem != null)
                 CurrentStage = Stage.TargetFabricationStation;

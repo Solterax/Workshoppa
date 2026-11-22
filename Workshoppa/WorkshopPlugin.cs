@@ -37,6 +37,7 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
     private readonly IChatGui _chatGui;
 
     private readonly Configuration _configuration;
+    private readonly CraftTiming _craftTiming;
     private readonly ExternalPluginHandler _externalPluginHandler;
     private readonly RetainerTransfer _retainerTransfer;
     private readonly WorkshopCache _workshopCache;
@@ -70,11 +71,15 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
         _externalPluginHandler = new ExternalPluginHandler(_pluginInterface, _pluginLog);
         _retainerTransfer = new RetainerTransfer(gameGui, condition, dataManager, pluginLog);
         _configuration = (Configuration?)_pluginInterface.GetPluginConfig() ?? new Configuration();
+        _craftTiming = new CraftTiming(_configuration);
+        if (_craftTiming.DiscardInterruptedSample())
+            _pluginInterface.SavePluginConfig(_configuration);
         _workshopCache = new WorkshopCache(dataManager, _pluginLog);
         _gameStrings = new(dataManager, _pluginLog);
 
         _mainWindow = new(this, _pluginInterface, _clientState, _objectTable, _configuration, _workshopCache,
-            new IconCache(textureProvider), _chatGui, new RecipeTree(dataManager, _pluginLog), _retainerTransfer, _pluginLog);
+            new IconCache(textureProvider), _chatGui, new RecipeTree(dataManager, _pluginLog), _retainerTransfer,
+            _craftTiming, _pluginLog);
         _windowSystem.AddWindow(_mainWindow);
         _configWindow = new(_pluginInterface, _configuration);
         _windowSystem.AddWindow(_configWindow);
@@ -121,6 +126,8 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
             {
                 _pluginLog.Debug($"Changing stage from {_currentStageInternal} to {value}");
                 _currentStageInternal = value;
+                if (value is Stage.Stopped or Stage.RequestStop)
+                    SetCraftTimerActive(false);
             }
 
             if (value != Stage.Stopped)
@@ -141,6 +148,7 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
             _condition[ConditionFlag.BetweenAreas51] ||
             GetDistanceToEventObject(_fabricationStationIds, out var fabricationStation) >= 3f)
         {
+            SetCraftTimerActive(false);
             _mainWindow.NearFabricationStation = false;
 
             if (_mainWindow.IsOpen &&
@@ -151,8 +159,16 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
                 _mainWindow.IsOpen = false;
             }
         }
-        else if (DateTime.Now >= _continueAt)
+        else
         {
+            if (_mainWindow.State is MainWindow.ButtonState.Pause or MainWindow.ButtonState.Stop)
+                SetCraftTimerActive(false);
+            else
+                SetCraftTimerActive(CurrentStage is not (Stage.Stopped or Stage.RequestStop));
+
+            if (DateTime.Now < _continueAt)
+                return;
+
             _mainWindow.NearFabricationStation = true;
 
             if (!_mainWindow.IsOpen)
@@ -178,6 +194,7 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
                 // TODO Error checking, we should ensure the player has the required job level for *all* crafting parts
                 _mainWindow.State = MainWindow.ButtonState.None;
                 CurrentStage = Stage.TakeItemFromQueue;
+                SetCraftTimerActive(true);
             }
 
             if (CurrentStage != Stage.Stopped && CurrentStage != Stage.RequestStop && !_externalPluginHandler.Saved)
@@ -261,6 +278,12 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
         }
     }
 
+    private void SetCraftTimerActive(bool active)
+    {
+        if (_craftTiming.SetActive(active))
+            _pluginInterface.SavePluginConfig(_configuration);
+    }
+
     private WorkshopCraft GetCurrentCraft()
     {
         return _workshopCache.Crafts.Single(
@@ -296,6 +319,7 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
 
     public void Dispose()
     {
+        SetCraftTimerActive(false);
         _addonLifecycle.UnregisterListener(AddonEvent.PostUpdate, "ContextIconMenu", ContextIconMenuPostReceiveEvent);
         _addonLifecycle.UnregisterListener(AddonEvent.PostRefresh, "Request", RequestPostRefresh);
         _addonLifecycle.UnregisterListener(AddonEvent.PostSetup, "Request", RequestPostSetup);

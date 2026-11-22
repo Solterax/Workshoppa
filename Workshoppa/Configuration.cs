@@ -16,6 +16,7 @@ internal sealed class Configuration : IPluginConfiguration
     public bool EnableRepairKitCalculator { get; set; } = true;
     public bool EnableCeruleumTankCalculator { get; set; } = true;
     public List<Preset> Presets { get; set; } = new();
+    public Dictionary<uint, CraftTimingStats> CraftTimes { get; set; } = new();
 
     public WindowConfig MainWindowConfig { get; } = new();
     public WindowConfig ConfigWindowConfig { get; } = new();
@@ -30,6 +31,8 @@ internal sealed class Configuration : IPluginConfiguration
     {
         public uint WorkshopItemId { get; set; }
         public bool StartedCrafting { get; set; }
+        public double? ActiveCraftSeconds { get; set; }
+        public bool CraftTimerRunning { get; set; }
 
         public uint PhasesComplete { get; set; }
         public List<PhaseItem> ContributedItemsInCurrentPhase { get; set; } = new();
@@ -74,6 +77,13 @@ internal sealed class Configuration : IPluginConfiguration
 
             return changed;
         }
+    }
+
+    internal sealed class CraftTimingStats
+    {
+        public long CompletedCrafts { get; set; }
+        public double TotalActiveSeconds { get; set; }
+        public double GetAverageSeconds() => TotalActiveSeconds / CompletedCrafts;
     }
 
     internal sealed class PhaseItem

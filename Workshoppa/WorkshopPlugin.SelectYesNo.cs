@@ -72,6 +72,7 @@ partial class WorkshopPlugin
 
     private void ConfirmCollectProductFollowUp()
     {
+        _craftTiming.RecordCompletion();
         _configuration.CurrentlyCraftedItem = null;
         _pluginInterface.SavePluginConfig(_configuration);
 

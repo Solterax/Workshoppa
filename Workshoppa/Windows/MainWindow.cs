@@ -34,6 +34,7 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
     private readonly IChatGui _chatGui;
     private readonly RecipeTree _recipeTree;
     private readonly RetainerTransfer _retainerTransfer;
+    private readonly CraftTiming _craftTiming;
     private readonly IPluginLog _pluginLog;
 
     private string _searchString = string.Empty;
@@ -42,7 +43,7 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
 
     public MainWindow(WorkshopPlugin plugin, IDalamudPluginInterface pluginInterface, IClientState clientState,
         IObjectTable objectTable, Configuration configuration, WorkshopCache workshopCache, IconCache iconCache, IChatGui chatGui,
-        RecipeTree recipeTree, RetainerTransfer retainerTransfer, IPluginLog pluginLog)
+        RecipeTree recipeTree, RetainerTransfer retainerTransfer, CraftTiming craftTiming, IPluginLog pluginLog)
         : base("Workshoppa###WorkshoppaMainWindow")
     {
         _plugin = plugin;
@@ -55,6 +56,7 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
         _chatGui = chatGui;
         _recipeTree = recipeTree;
         _retainerTransfer = retainerTransfer;
+        _craftTiming = craftTiming;
         _pluginLog = pluginLog;
 
         Position = new Vector2(100, 100);
@@ -193,6 +195,7 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
 
         ImGui.Separator();
         ImGui.Text("Queue:");
+        DrawQueueEstimate();
         ImGui.BeginDisabled(_plugin.CurrentStage != Stage.Stopped || _retainerTransfer.IsBusy);
         Configuration.QueuedItem? itemToRemove = null;
         for (int i = 0; i < _configuration.ItemQueue.Count; ++i)
@@ -271,6 +274,8 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
         }
 
         ImGui.EndDisabled();
+
+        DrawCraftTimes();
 
         ImGui.Separator();
         ImGui.Text($"Debug (Stage): {_plugin.CurrentStage}");
@@ -531,6 +536,86 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
     public override void OnClose()
     {
         OpenReason = EOpenReason.None;
+    }
+
+    private void DrawQueueEstimate()
+    {
+        double estimatedSeconds = 0;
+        long estimatedItems = 0;
+        long unknownItems = 0;
+        foreach (var item in _configuration.ItemQueue)
+        {
+            if (item.Quantity <= 0)
+                continue;
+
+            if (GetCraftAverage(item.WorkshopItemId) is { } average)
+            {
+                estimatedSeconds += average * item.Quantity;
+                estimatedItems += item.Quantity;
+            }
+            else
+                unknownItems += item.Quantity;
+        }
+
+        if (_configuration.CurrentlyCraftedItem is { } current)
+        {
+            if (GetCraftAverage(current.WorkshopItemId) is { } average &&
+                _craftTiming.GetElapsedSeconds(current) is { } elapsed)
+            {
+                estimatedSeconds += Math.Max(0, average - elapsed);
+                estimatedItems++;
+            }
+            else
+                unknownItems++;
+        }
+
+        if (estimatedItems > 0)
+        {
+            var extra = unknownItems > 0 ? $" + {unknownItems:N0} without estimates" : string.Empty;
+            ImGui.TextWrapped($"Estimated active time remaining: {FormatDuration(estimatedSeconds)}{extra}");
+        }
+        else if (unknownItems > 0)
+            ImGui.TextDisabled("No time estimates for the remaining crafts.");
+    }
+
+    private void DrawCraftTimes()
+    {
+        if (!ImGui.CollapsingHeader("Craft times"))
+            return;
+
+        if (_configuration.CraftTimes.Count == 0)
+        {
+            ImGui.TextWrapped("Complete a workshop craft to record its first time.");
+            return;
+        }
+
+        foreach (var craft in _workshopCache.Crafts.OrderBy(x => x.Name))
+        {
+            if (GetCraftAverage(craft.WorkshopItemId) is { } average)
+            {
+                long samples = _configuration.CraftTimes[craft.WorkshopItemId].CompletedCrafts;
+                string runs = samples == 1 ? "run" : "runs";
+                ImGui.TextWrapped($"{craft.Name}: {FormatDuration(average)} average ({samples:N0} {runs})");
+            }
+        }
+    }
+
+    private double? GetCraftAverage(uint itemId) =>
+        _configuration.CraftTimes.TryGetValue(itemId, out var stats) &&
+        stats.CompletedCrafts > 0 && double.IsFinite(stats.TotalActiveSeconds) && stats.TotalActiveSeconds > 0
+            ? stats.GetAverageSeconds()
+            : null;
+
+    private static string FormatDuration(double seconds)
+    {
+        seconds = Math.Ceiling(seconds);
+        if (seconds >= 86400)
+            return $"{Math.Floor(seconds / 86400):N0}d {Math.Floor(seconds % 86400 / 3600):0}h";
+        if (seconds >= 3600)
+            return $"{Math.Floor(seconds / 3600):0}h {Math.Floor(seconds % 3600 / 60):0}m";
+        if (seconds >= 60)
+            return $"{Math.Floor(seconds / 60):0}m {seconds % 60:0}s";
+        return $"{seconds:0}s";
     }
 
     private void DrawRetainerTransfers()
