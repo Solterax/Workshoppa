@@ -172,7 +172,7 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
                 _checkInventory = !_checkInventory;
 
             ImGui.SameLine();
-            ImGui.BeginDisabled(!NearFabricationStation || _configuration.ItemQueue.Sum(x => x.Quantity) == 0 ||
+            ImGui.BeginDisabled(!NearFabricationStation || !_configuration.RunnableQueue.Any() ||
                                 _plugin.CurrentStage != Stage.Stopped || !IsDiscipleOfHand || _retainerTransfer.IsBusy);
             if (ImGuiComponents.IconButtonWithText(FontAwesomeIcon.Play, "Start Crafting"))
             {
@@ -196,36 +196,34 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
         ImGui.Separator();
         ImGui.Text("Queue:");
         DrawQueueEstimate();
-        ImGui.BeginDisabled(_plugin.CurrentStage != Stage.Stopped || _retainerTransfer.IsBusy);
+        bool queueLocked = _plugin.CurrentStage != Stage.Stopped || _retainerTransfer.IsBusy;
+        float pauseButtonWidth = ImGui.CalcTextSize("Resume").X + 2 * ImGui.GetStyle().FramePadding.X;
         Configuration.QueuedItem? itemToRemove = null;
-        for (int i = 0; i < _configuration.ItemQueue.Count; ++i)
+        if (_configuration.ItemQueue.Count > 0 &&
+            ImGui.BeginTable("##QueueRows", 2, ImGuiTableFlags.NoSavedSettings))
         {
-            using var _ = ImRaii.PushId($"ItemQueue{i}");
-            var item = _configuration.ItemQueue[i];
-            var craft = _workshopCache.Crafts.Single(x => x.WorkshopItemId == item.WorkshopItemId);
-
-            IDalamudTextureWrap? icon = _iconCache.GetIcon(craft.IconId);
-            if (icon != null)
+            ImGui.TableSetupColumn("Craft", ImGuiTableColumnFlags.WidthStretch);
+            ImGui.TableSetupColumn("Queue action", ImGuiTableColumnFlags.WidthFixed, pauseButtonWidth);
+            for (int i = 0; i < _configuration.ItemQueue.Count; ++i)
             {
-                ImGui.Image(icon.Handle, new Vector2(ImGui.GetFrameHeight()));
-                ImGui.SameLine(0, ImGui.GetStyle().ItemInnerSpacing.X);
-            }
-
-            ImGui.SetNextItemWidth(Math.Max(100 * ImGui.GetIO().FontGlobalScale, 4 * (ImGui.GetFrameHeight() + ImGui.GetStyle().FramePadding.X)));
-            int quantity = item.Quantity;
-            if (ImGui.InputInt(craft.Name, ref quantity))
-            {
-                item.Quantity = Math.Max(0, quantity);
-                Save();
-            }
-
-            ImGui.OpenPopupOnItemClick($"###Context{i}");
-            using var popup = ImRaii.ContextPopup($"###Context{i}");
-            if (popup)
-            {
-                if (ImGui.MenuItem($"Remove {craft.Name}"))
+                using var _ = ImRaii.PushId(i);
+                var item = _configuration.ItemQueue[i];
+                var craft = _workshopCache.Crafts.Single(x => x.WorkshopItemId == item.WorkshopItemId);
+                ImGui.TableNextRow();
+                ImGui.TableSetColumnIndex(0);
+                if (DrawQueueItem(item, craft, queueLocked))
                     itemToRemove = item;
+
+                ImGui.TableSetColumnIndex(1);
+                using var disabled = ImRaii.Disabled(_retainerTransfer.IsBusy);
+                if (ImGui.Button(item.IsPaused ? "Resume" : "Pause", new Vector2(pauseButtonWidth, 0)))
+                {
+                    item.IsPaused = !item.IsPaused;
+                    Save();
+                }
             }
+
+            ImGui.EndTable();
         }
 
         if (itemToRemove != null)
@@ -234,6 +232,7 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
             Save();
         }
 
+        ImGui.BeginDisabled(queueLocked);
         ImGui.SetNextItemWidth(ImGui.GetContentRegionAvail().X);
         if (ImGui.BeginCombo("##CraftSelection", "Add Craft...", ImGuiComboFlags.HeightLarge))
         {
@@ -281,6 +280,38 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
         ImGui.Text($"Debug (Stage): {_plugin.CurrentStage}");
     }
 
+    private bool DrawQueueItem(Configuration.QueuedItem item, WorkshopCraft craft, bool queueLocked)
+    {
+        using IDalamudTextureWrap? icon = _iconCache.GetIcon(craft.IconId);
+        if (icon != null)
+        {
+            ImGui.Image(icon.Handle, new Vector2(ImGui.GetFrameHeight()));
+            ImGui.SameLine(0, ImGui.GetStyle().ItemInnerSpacing.X);
+        }
+
+        using var disabled = ImRaii.Disabled(queueLocked);
+        ImGui.SetNextItemWidth(Math.Max(100 * ImGui.GetIO().FontGlobalScale,
+            4 * (ImGui.GetFrameHeight() + ImGui.GetStyle().FramePadding.X)));
+        int quantity = item.Quantity;
+        if (ImGui.InputInt("##Quantity", ref quantity))
+        {
+            item.Quantity = Math.Max(0, quantity);
+            Save();
+        }
+
+        ImGui.OpenPopupOnItemClick("##QueueItemActions");
+        ImGui.SameLine();
+        ImGui.AlignTextToFramePadding();
+        ImGui.TextWrapped(craft.Name);
+        ImGui.OpenPopupOnItemClick("##QueueItemActions");
+        if (!ImGui.BeginPopup("##QueueItemActions"))
+            return false;
+
+        bool remove = ImGui.MenuItem($"Remove {craft.Name}");
+        ImGui.EndPopup();
+        return remove;
+    }
+
     private void DrawPresetsMenu()
     {
         if (ImGui.BeginMenu("Presets"))
@@ -304,7 +335,8 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
                         foreach (var item in preset.ItemQueue)
                         {
                             var queuedItem =
-                                _configuration.ItemQueue.FirstOrDefault(x => x.WorkshopItemId == item.WorkshopItemId);
+                                _configuration.ItemQueue.FirstOrDefault(x => x.WorkshopItemId == item.WorkshopItemId &&
+                                    x.IsPaused == item.IsPaused);
                             if (queuedItem != null)
                                 queuedItem.Quantity += item.Quantity;
                             else
@@ -313,6 +345,7 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
                                 {
                                     WorkshopItemId = item.WorkshopItemId,
                                     Quantity = item.Quantity,
+                                    IsPaused = item.IsPaused,
                                 });
                             }
                         }
@@ -348,7 +381,8 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
                         ItemQueue = _configuration.ItemQueue.Select(x => new Configuration.QueuedItem
                         {
                             WorkshopItemId = x.WorkshopItemId,
-                            Quantity = x.Quantity
+                            Quantity = x.Quantity,
+                            IsPaused = x.IsPaused,
                         }).ToList()
                     });
 
@@ -444,7 +478,7 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
                 foreach (var item in fromClipboardItems)
                 {
                     var queuedItem =
-                        _configuration.ItemQueue.FirstOrDefault(x => x.WorkshopItemId == item.WorkshopItemId);
+                        _configuration.ItemQueue.FirstOrDefault(x => x.WorkshopItemId == item.WorkshopItemId && !x.IsPaused);
                     if (queuedItem != null)
                         queuedItem.Quantity += item.Quantity;
                     else
@@ -543,11 +577,8 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
         double estimatedSeconds = 0;
         long estimatedItems = 0;
         long unknownItems = 0;
-        foreach (var item in _configuration.ItemQueue)
+        foreach (var item in _configuration.RunnableQueue)
         {
-            if (item.Quantity <= 0)
-                continue;
-
             if (GetCraftAverage(item.WorkshopItemId) is { } average)
             {
                 estimatedSeconds += average * item.Quantity;
@@ -576,6 +607,8 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
         }
         else if (unknownItems > 0)
             ImGui.TextDisabled("No time estimates for the remaining crafts.");
+        else if (_configuration.ItemQueue.Any(item => item.IsPaused && item.Quantity > 0))
+            ImGui.TextDisabled("All queued crafts are paused.");
     }
 
     private void DrawCraftTimes()
@@ -639,7 +672,7 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
             ImGui.EndDisabled();
 
             ImGui.BeginDisabled(_plugin.CurrentStage != Stage.Stopped || _retainerTransfer.IsBusy ||
-                (_configuration.CurrentlyCraftedItem == null && !_configuration.ItemQueue.Any(x => x.Quantity > 0)));
+                (_configuration.CurrentlyCraftedItem == null && !_configuration.RunnableQueue.Any()));
             if (ImGui.Button("Withdraw needed materials"))
             {
                 _retainerTransfer.Start(RetainerTransfer.TransferKind.WithdrawMaterials, GetMaterialList());
@@ -662,7 +695,7 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
 
     private void CheckMaterial()
     {
-        ImGui.Text("Items needed for all crafts in queue:");
+        ImGui.Text("Items needed for active and unpaused crafts:");
         var items = GetMaterialList();
 
         ImGui.Indent(20);
@@ -689,7 +722,7 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
 
     private List<Ingredient> GetMaterialList()
     {
-        List<uint> workshopItemIds = _configuration.ItemQueue
+        List<uint> workshopItemIds = _configuration.RunnableQueue
             .SelectMany(x => Enumerable.Range(0, x.Quantity).Select(_ => x.WorkshopItemId))
             .ToList();
         Dictionary<uint, int> completedForCurrentCraft = new();

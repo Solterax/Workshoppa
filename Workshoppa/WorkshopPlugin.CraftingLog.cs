@@ -16,24 +16,13 @@ partial class WorkshopPlugin
     {
         if (_configuration.CurrentlyCraftedItem == null)
         {
-            while (_configuration.ItemQueue.Count > 0 && _configuration.CurrentlyCraftedItem == null)
+            if (_configuration.TakeNextQueuedItem() is { } workshopItemId)
             {
-                var firstItem = _configuration.ItemQueue[0];
-                if (firstItem.Quantity > 0)
+                _configuration.CurrentlyCraftedItem = new Configuration.CurrentItem
                 {
-                    _configuration.CurrentlyCraftedItem = new Configuration.CurrentItem
-                    {
-                        WorkshopItemId = firstItem.WorkshopItemId,
-                        ActiveCraftSeconds = 0,
-                    };
-
-                    if (firstItem.Quantity > 1)
-                        firstItem.Quantity--;
-                    else
-                        _configuration.ItemQueue.Remove(firstItem);
-                }
-                else
-                    _configuration.ItemQueue.Remove(firstItem);
+                    WorkshopItemId = workshopItemId,
+                    ActiveCraftSeconds = 0,
+                };
             }
 
             _craftTiming.SetActive(_configuration.CurrentlyCraftedItem != null);

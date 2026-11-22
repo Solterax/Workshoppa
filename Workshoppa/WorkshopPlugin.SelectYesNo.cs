@@ -89,7 +89,8 @@ partial class WorkshopPlugin
         CurrentStage = Stage.TakeItemFromQueue;
         _continueAt = DateTime.Now.AddSeconds(0.5);
         MarkCraftProgress();
-        if (!_configuration.ItemQueue.Any(item => item.Quantity > 0))
-            _queueNotification.Completed(_pluginInterface.UiBuilder.WindowHandlePtr);
+        if (!_configuration.RunnableQueue.Any())
+            _queueNotification.Completed(_pluginInterface.UiBuilder.WindowHandlePtr,
+                _configuration.ItemQueue.Any(item => item.IsPaused && item.Quantity > 0));
     }
 }

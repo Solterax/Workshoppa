@@ -13,6 +13,7 @@ internal sealed class Configuration : IPluginConfiguration
 
     public CurrentItem? CurrentlyCraftedItem { get; set; }
     public List<QueuedItem> ItemQueue { get; set; } = new();
+    internal IEnumerable<QueuedItem> RunnableQueue => ItemQueue.Where(item => item.IsRunnable);
     public bool EnableRepairKitCalculator { get; set; } = true;
     public bool EnableCeruleumTankCalculator { get; set; } = true;
     public bool NotifyOnQueueCompletionInBackground { get; set; }
@@ -22,10 +23,37 @@ internal sealed class Configuration : IPluginConfiguration
     public WindowConfig MainWindowConfig { get; } = new();
     public WindowConfig ConfigWindowConfig { get; } = new();
 
+    internal uint? TakeNextQueuedItem()
+    {
+        for (int index = 0; index < ItemQueue.Count;)
+        {
+            var item = ItemQueue[index];
+            if (item.IsPaused)
+            {
+                index++;
+                continue;
+            }
+
+            if (!item.IsRunnable)
+            {
+                ItemQueue.RemoveAt(index);
+                continue;
+            }
+
+            if (--item.Quantity == 0)
+                ItemQueue.RemoveAt(index);
+            return item.WorkshopItemId;
+        }
+
+        return null;
+    }
+
     internal sealed class QueuedItem
     {
         public uint WorkshopItemId { get; set; }
         public int Quantity { get; set; }
+        public bool IsPaused { get; set; }
+        internal bool IsRunnable => !IsPaused && Quantity > 0;
     }
 
     internal sealed class CurrentItem

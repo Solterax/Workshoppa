@@ -20,8 +20,10 @@ internal sealed class QueueCompletionNotification(Configuration configuration, I
     private long _shownAt;
     private nint _iconWindow;
 
-    public void Completed(nint gameWindow) =>
-        ShowIfBackground(gameWindow, "Workshoppa queue complete", "All queued workshop crafts have been collected.", InfoIcon);
+    public void Completed(nint gameWindow, bool pausedCraftsRemain) =>
+        ShowIfBackground(gameWindow, "Workshoppa queue complete", pausedCraftsRemain
+            ? "All unpaused workshop crafts have been collected. Paused crafts remain in the queue."
+            : "All queued workshop crafts have been collected.", InfoIcon);
 
     public void Failed(nint gameWindow, string reason) =>
         ShowIfBackground(gameWindow, "Workshoppa queue stopped", reason, WarningIcon);
