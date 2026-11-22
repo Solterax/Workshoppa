@@ -63,17 +63,19 @@ partial class WorkshopPlugin
             }
             else if (CurrentStage == Stage.ConfirmCollectProduct && _gameStrings.RetrieveFinishedItem.IsMatch(text))
             {
-                _pluginLog.Information($"Selecting 'yes' ({text})");
-                if (_configuration.NotifyOnQueueCompletionInBackground &&
-                    _configuration.CurrentlyCraftedItem is { } current)
+                var current = _configuration.CurrentlyCraftedItem;
+                var craft = _workshopCache.Crafts.FirstOrDefault(x => x.WorkshopItemId == current?.WorkshopItemId);
+                if (craft == null || craft.ResultItem == 0)
                 {
-                    var craft = _workshopCache.Crafts.FirstOrDefault(x => x.WorkshopItemId == current.WorkshopItemId);
-                    if (craft != null)
-                        _queueNotification.WatchCollection(craft.ResultItem);
+                    FailCraft("Workshoppa could not identify the finished product.");
+                    return;
                 }
-                addonSelectYesNo->AtkUnitBase.FireCallbackInt(0);
 
-                ConfirmCollectProductFollowUp();
+                _collection = new ProductCollection(craft, RetainerTransfer.CountInInventory(craft.ResultItem),
+                    System.Diagnostics.Stopwatch.GetTimestamp());
+                CurrentStage = Stage.WaitForCollectedProduct;
+                _pluginLog.Information($"Selecting 'yes' ({text})");
+                addonSelectYesNo->AtkUnitBase.FireCallbackInt(0);
             }
         }
     }
@@ -86,5 +88,8 @@ partial class WorkshopPlugin
 
         CurrentStage = Stage.TakeItemFromQueue;
         _continueAt = DateTime.Now.AddSeconds(0.5);
+        MarkCraftProgress();
+        if (!_configuration.ItemQueue.Any(item => item.Quantity > 0))
+            _queueNotification.Completed(_pluginInterface.UiBuilder.WindowHandlePtr);
     }
 }

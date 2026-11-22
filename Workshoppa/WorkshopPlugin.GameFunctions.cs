@@ -213,13 +213,16 @@ partial class WorkshopPlugin
         for (InventoryType t = InventoryType.Inventory1; t <= InventoryType.Inventory4; ++t)
         {
             var container = inventoryManger->GetInventoryContainer(t);
+            if (container == null || !container->IsLoaded)
+                continue;
+
             for (int i = 0; i < container->Size; ++i)
             {
                 var item = container->GetInventorySlot(i);
                 if (item == null)
                     continue;
 
-                if (item->ItemId == itemId && item->Quantity >= count)
+                if (item->GetBaseItemId() == itemId && !item->IsCollectable() && item->Quantity >= count)
                     return true;
             }
         }

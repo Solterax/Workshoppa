@@ -141,8 +141,39 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
 
     private void FrameworkUpdate(IFramework framework)
     {
-        _queueNotification.Update(_clientState.IsLoggedIn, _pluginInterface.UiBuilder.WindowHandlePtr);
+        _queueNotification.Update();
         _retainerTransfer.Update();
+
+        try
+        {
+            UpdateCraft();
+        }
+        catch (Exception exception) when (CurrentStage is not (Stage.Stopped or Stage.RequestStop))
+        {
+            _pluginLog.Error(exception, $"The workshop queue failed during {CurrentStage}.");
+            FailCraft("An unexpected crafting error stopped the queue. See the Dalamud log for details.");
+        }
+    }
+
+    private void UpdateCraft()
+    {
+        if (CurrentStage == Stage.WaitForCollectedProduct)
+        {
+            CheckCollectedProduct();
+            return;
+        }
+
+        if (_mainWindow.State is MainWindow.ButtonState.Pause or MainWindow.ButtonState.Stop)
+        {
+            StopCraft();
+            return;
+        }
+
+        if (!_clientState.IsLoggedIn && CurrentStage is not (Stage.Stopped or Stage.RequestStop))
+        {
+            FailCraft("The character logged out or disconnected before the workshop queue finished.");
+            return;
+        }
 
         if (!_clientState.IsLoggedIn ||
             !WorkshopTerritories.Contains(_clientState.TerritoryType) ||
@@ -153,6 +184,8 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
         {
             SetCraftTimerActive(false);
             _mainWindow.NearFabricationStation = false;
+            if (CraftProgressTimedOut())
+                FailCraft("The fabrication station was unavailable for too long.");
 
             if (_mainWindow.IsOpen &&
                 _mainWindow.OpenReason == MainWindow.EOpenReason.NearFabricationStation &&
@@ -164,10 +197,13 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
         }
         else
         {
-            if (_mainWindow.State is MainWindow.ButtonState.Pause or MainWindow.ButtonState.Stop)
-                SetCraftTimerActive(false);
-            else
-                SetCraftTimerActive(CurrentStage is not (Stage.Stopped or Stage.RequestStop));
+            SetCraftTimerActive(CurrentStage is not (Stage.Stopped or Stage.RequestStop));
+
+            if (CraftProgressTimedOut())
+            {
+                FailCraft("Crafting stopped making progress. Check the fabrication station and any open game prompts.");
+                return;
+            }
 
             if (DateTime.Now < _continueAt)
                 return;
@@ -180,23 +216,13 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
                 _mainWindow.OpenReason = MainWindow.EOpenReason.NearFabricationStation;
             }
 
-            if (_mainWindow.State is MainWindow.ButtonState.Pause or MainWindow.ButtonState.Stop)
-            {
-                _mainWindow.State = MainWindow.ButtonState.None;
-                if (CurrentStage != Stage.Stopped)
-                {
-                    _externalPluginHandler.Restore();
-                    CurrentStage = Stage.Stopped;
-                }
-
-                return;
-            }
-            else if (_mainWindow.State is MainWindow.ButtonState.Start or MainWindow.ButtonState.Resume &&
+            if (_mainWindow.State is MainWindow.ButtonState.Start or MainWindow.ButtonState.Resume &&
                      CurrentStage == Stage.Stopped && !_retainerTransfer.IsBusy)
             {
                 // TODO Error checking, we should ensure the player has the required job level for *all* crafting parts
                 _mainWindow.State = MainWindow.ButtonState.None;
                 CurrentStage = Stage.TakeItemFromQueue;
+                ResetCraftProgress();
                 SetCraftTimerActive(true);
             }
 
@@ -239,8 +265,7 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
                     break;
 
                 case Stage.RequestStop:
-                    _externalPluginHandler.Restore();
-                    CurrentStage = Stage.Stopped;
+                    StopCraft();
                     break;
 
                 case Stage.SelectCraftBranch:

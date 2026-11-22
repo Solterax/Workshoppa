@@ -1,6 +1,5 @@
 using System;
 using System.Diagnostics;
-using System.Linq;
 using System.Runtime.InteropServices;
 using Dalamud.Plugin.Services;
 
@@ -8,7 +7,6 @@ namespace Workshoppa;
 
 internal sealed class QueueCompletionNotification(Configuration configuration, IPluginLog log) : IDisposable
 {
-    private static readonly TimeSpan CollectionTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan IconLifetime = TimeSpan.FromSeconds(30);
     private const uint AddIcon = 0;
     private const uint ModifyIcon = 1;
@@ -17,43 +15,31 @@ internal sealed class QueueCompletionNotification(Configuration configuration, I
     private const uint IconAndTooltip = 0x02 | 0x04;
     private const uint BalloonInfo = 0x10;
     private const uint InfoIcon = 1;
+    private const uint WarningIcon = 2;
 
-    private Collection? _collection;
     private long _shownAt;
     private nint _iconWindow;
 
-    public void WatchCollection(uint resultItem)
-    {
-        if (resultItem != 0 && !configuration.ItemQueue.Any(item => item.Quantity > 0))
-            _collection = new Collection(resultItem, RetainerTransfer.CountInInventory(resultItem), Stopwatch.GetTimestamp());
-    }
+    public void Completed(nint gameWindow) =>
+        ShowIfBackground(gameWindow, "Workshoppa queue complete", "All queued workshop crafts have been collected.", InfoIcon);
 
-    public void Update(bool loggedIn, nint gameWindow)
+    public void Failed(nint gameWindow, string reason) =>
+        ShowIfBackground(gameWindow, "Workshoppa queue stopped", reason, WarningIcon);
+
+    public void Update()
     {
         if (_iconWindow != 0 && Stopwatch.GetElapsedTime(_shownAt) >= IconLifetime)
             RemoveIcon();
-
-        if (_collection is not { } collection)
-            return;
-
-        if (!loggedIn || !configuration.NotifyOnQueueCompletionInBackground ||
-            configuration.CurrentlyCraftedItem != null || configuration.ItemQueue.Any(item => item.Quantity > 0) ||
-            Stopwatch.GetElapsedTime(collection.StartedAt) >= CollectionTimeout)
-        {
-            _collection = null;
-            return;
-        }
-
-        // The confirmation callback can succeed before the game has delivered the finished item.
-        if (RetainerTransfer.CountInInventory(collection.ResultItem) <= collection.InventoryCount)
-            return;
-
-        _collection = null;
-        if (OperatingSystem.IsWindows() && gameWindow != 0 && NativeMethods.GetForegroundWindow() != gameWindow)
-            ShowNotification(gameWindow);
     }
 
-    private void ShowNotification(nint gameWindow)
+    private void ShowIfBackground(nint gameWindow, string title, string message, uint severity)
+    {
+        if (configuration.NotifyOnQueueCompletionInBackground && OperatingSystem.IsWindows() &&
+            gameWindow != 0 && NativeMethods.GetForegroundWindow() != gameWindow)
+            ShowNotification(gameWindow, title, message, severity);
+    }
+
+    private void ShowNotification(nint gameWindow, string title, string message, uint severity)
     {
         RemoveIcon();
         var data = CreateIconData(gameWindow);
@@ -72,9 +58,9 @@ internal sealed class QueueCompletionNotification(Configuration configuration, I
         NativeMethods.Shell_NotifyIconW(SetIconVersion, ref data);
 
         data.Flags = BalloonInfo;
-        data.Title = "Workshoppa queue complete";
-        data.Message = "All queued workshop crafts have been collected.";
-        data.InfoFlags = InfoIcon;
+        data.Title = title;
+        data.Message = message.Length > 255 ? message[..254] + "…" : message;
+        data.InfoFlags = severity;
         if (!NativeMethods.Shell_NotifyIconW(ModifyIcon, ref data))
         {
             log.Warning("Windows could not display the Workshoppa queue notification.");
@@ -100,8 +86,6 @@ internal sealed class QueueCompletionNotification(Configuration configuration, I
     };
 
     public void Dispose() => RemoveIcon();
-
-    private readonly record struct Collection(uint ResultItem, int InventoryCount, long StartedAt);
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct NotifyIconData

@@ -39,7 +39,10 @@ partial class WorkshopPlugin
             _craftTiming.SetActive(_configuration.CurrentlyCraftedItem != null);
             _pluginInterface.SavePluginConfig(_configuration);
             if (_configuration.CurrentlyCraftedItem != null)
+            {
+                ResetCraftProgress();
                 CurrentStage = Stage.TargetFabricationStation;
+            }
             else
                 CurrentStage = Stage.RequestStop;
         }
@@ -97,8 +100,7 @@ partial class WorkshopPlugin
 
         if (visibleItems.All(x => x.WorkshopItemId != craft.WorkshopItemId))
         {
-            _pluginLog.Error($"Could not find {craft.Name} in current list, is it unlocked?");
-            CurrentStage = Stage.RequestStop;
+            FailCraft($"The crafting log does not list {craft.Name}. Check that the recipe is unlocked.");
             return;
         }
 
@@ -124,6 +126,7 @@ partial class WorkshopPlugin
         if (SelectSelectYesno(0, s => s.StartsWith("Craft ", StringComparison.Ordinal)))
         {
             _configuration.CurrentlyCraftedItem!.StartedCrafting = true;
+            MarkCraftProgress();
             _pluginInterface.SavePluginConfig(_configuration);
 
             CurrentStage = Stage.TargetFabricationStation;

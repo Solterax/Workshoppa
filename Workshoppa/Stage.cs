@@ -18,6 +18,7 @@ public enum Stage
     ConfirmMaterialDelivery,
 
     ConfirmCollectProduct,
+    WaitForCollectedProduct,
 
     RequestStop,
     Stopped,

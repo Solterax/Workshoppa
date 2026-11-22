@@ -73,12 +73,8 @@ partial class WorkshopPlugin
             CurrentStage = Stage.TargetFabricationStation;
             _continueAt = DateTime.Now.AddSeconds(3);
         }
-        else if (SelectSelectString("collect", 0, s => s == "Collect finished product."))
-        {
-            _pluginLog.Information("Item is complete");
-            CurrentStage = Stage.ConfirmCollectProduct;
-            _continueAt = DateTime.Now.AddSeconds(0.25);
-        }
+        else
+            SelectSelectString("collect", 0, CanBeginProductCollection);
     }
 
     private unsafe void ContributeMaterials()
@@ -101,6 +97,8 @@ partial class WorkshopPlugin
             _pluginInterface.SavePluginConfig(_configuration);
         }
 
+        NoteMaterialProgress(craftState);
+
         for (int i = 0; i < craftState.Items.Count; ++i)
         {
             var item = craftState.Items[i];
@@ -109,25 +107,11 @@ partial class WorkshopPlugin
 
             if (!HasItemInSingleSlot(item.ItemId, item.ItemCountPerStep))
             {
-                _pluginLog.Error(
-                    $"Can't contribute item {item.ItemId} to craft, couldn't find {item.ItemCountPerStep}x in a single inventory slot");
-
-                InventoryManager* inventoryManager = InventoryManager.Instance();
-                int itemCount = 0;
-                if (inventoryManager != null)
-                {
-                    itemCount = inventoryManager->GetInventoryItemCount(item.ItemId, true, false, false) +
-                                inventoryManager->GetInventoryItemCount(item.ItemId, false, false, false);
-                }
-
-                if (itemCount < item.ItemCountPerStep)
-                    _chatGui.PrintError(
-                        $"[Workshoppa] You don't have the needed {item.ItemCountPerStep}x {item.ItemName} to continue.");
-                else
-                    _chatGui.PrintError(
-                        $"[Workshoppa] You don't have {item.ItemCountPerStep}x {item.ItemName} in a single stack, you need to merge the items in your inventory manually to continue.");
-
-                CurrentStage = Stage.RequestStop;
+                int itemCount = RetainerTransfer.CountInInventory(item.ItemId);
+                var reason = itemCount < item.ItemCountPerStep
+                    ? $"Missing materials: need {item.ItemCountPerStep}× {item.ItemName}, have {itemCount}."
+                    : $"Split stacks: merge {item.ItemCountPerStep}× {item.ItemName} into a single stack.";
+                FailCraft(reason);
                 break;
             }
 

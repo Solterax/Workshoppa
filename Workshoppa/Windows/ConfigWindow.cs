@@ -47,7 +47,7 @@ internal sealed class ConfigWindow : LWindow, IPersistableWindowConfig
         }
 
         bool notifyInBackground = _configuration.NotifyOnQueueCompletionInBackground;
-        if (ImGui.Checkbox("Notify when queue finishes in the background", ref notifyInBackground))
+        if (ImGui.Checkbox("Notify when queue finishes or fails in the background", ref notifyInBackground))
         {
             _configuration.NotifyOnQueueCompletionInBackground = notifyInBackground;
             _pluginInterface.SavePluginConfig(_configuration);

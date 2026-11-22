@@ -26,6 +26,7 @@ internal sealed class WorkshopCache
                     {
                         WorkshopItemId = x.RowId,
                         ResultItem = x.ResultItem.RowId,
+                        ResultStackSize = x.ResultItem.Value.StackSize,
                         Name = x.ResultItem.Value.Name.ToString(),
                         IconId = x.ResultItem.Value.Icon,
                         Category = (WorkshopCraftCategory)x.CompanyCraftDraftCategory.RowId,
