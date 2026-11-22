@@ -8,6 +8,7 @@ namespace Workshoppa;
 internal sealed class QueueCompletionNotification(Configuration configuration, IPluginLog log) : IDisposable
 {
     private static readonly TimeSpan IconLifetime = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan TestDelay = TimeSpan.FromSeconds(3);
     private const uint AddIcon = 0;
     private const uint ModifyIcon = 1;
     private const uint DeleteIcon = 2;
@@ -16,9 +17,11 @@ internal sealed class QueueCompletionNotification(Configuration configuration, I
     private const uint BalloonInfo = 0x10;
     private const uint InfoIcon = 1;
     private const uint WarningIcon = 2;
+    private const uint FlashTaskbar = 2;
 
     private long _shownAt;
     private nint _iconWindow;
+    private (nint Window, long RequestedAt)? _test;
 
     public void Completed(nint gameWindow, bool pausedCraftsRemain) =>
         ShowIfBackground(gameWindow, "Workshoppa queue complete", pausedCraftsRemain
@@ -28,21 +31,49 @@ internal sealed class QueueCompletionNotification(Configuration configuration, I
     public void Failed(nint gameWindow, string reason) =>
         ShowIfBackground(gameWindow, "Workshoppa queue stopped", reason, WarningIcon);
 
+    public void ScheduleTest(nint gameWindow)
+    {
+        if (OperatingSystem.IsWindows() && gameWindow != 0)
+            _test = (gameWindow, Stopwatch.GetTimestamp());
+    }
+
     public void Update()
     {
         if (_iconWindow != 0 && Stopwatch.GetElapsedTime(_shownAt) >= IconLifetime)
             RemoveIcon();
+
+        if (_test is { } test && Stopwatch.GetElapsedTime(test.RequestedAt) >= TestDelay)
+        {
+            _test = null;
+            ShowNotification(test.Window, "Workshoppa desktop alert test",
+                "This is how a stopped workshop queue alerts you.", WarningIcon);
+        }
     }
 
     private void ShowIfBackground(nint gameWindow, string title, string message, uint severity)
     {
         if (configuration.NotifyOnQueueCompletionInBackground && OperatingSystem.IsWindows() &&
             gameWindow != 0 && NativeMethods.GetForegroundWindow() != gameWindow)
+        {
+            _test = null;
             ShowNotification(gameWindow, title, message, severity);
+        }
     }
 
     private void ShowNotification(nint gameWindow, string title, string message, uint severity)
     {
+        if (severity == WarningIcon && NativeMethods.GetForegroundWindow() != gameWindow)
+        {
+            var flash = new FlashWindowInfo
+            {
+                Size = (uint)Marshal.SizeOf<FlashWindowInfo>(),
+                Window = gameWindow,
+                Flags = FlashTaskbar,
+                Count = 3,
+            };
+            NativeMethods.FlashWindowEx(ref flash);
+        }
+
         RemoveIcon();
         var data = CreateIconData(gameWindow);
         data.Flags = IconAndTooltip;
@@ -89,6 +120,16 @@ internal sealed class QueueCompletionNotification(Configuration configuration, I
 
     public void Dispose() => RemoveIcon();
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FlashWindowInfo
+    {
+        public uint Size;
+        public nint Window;
+        public uint Flags;
+        public uint Count;
+        public uint Timeout;
+    }
+
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct NotifyIconData
     {
@@ -114,6 +155,11 @@ internal sealed class QueueCompletionNotification(Configuration configuration, I
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         [DllImport("user32.dll", ExactSpelling = true)]
         internal static extern nint GetForegroundWindow();
+
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [DllImport("user32.dll", ExactSpelling = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool FlashWindowEx(ref FlashWindowInfo info);
 
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         [DllImport("user32.dll", ExactSpelling = true)]

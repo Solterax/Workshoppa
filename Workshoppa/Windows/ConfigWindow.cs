@@ -10,13 +10,16 @@ internal sealed class ConfigWindow : LWindow, IPersistableWindowConfig
 {
     private readonly IDalamudPluginInterface _pluginInterface;
     private readonly Configuration _configuration;
+    private readonly QueueCompletionNotification _queueNotification;
 
-    public ConfigWindow(IDalamudPluginInterface pluginInterface, Configuration configuration)
+    public ConfigWindow(IDalamudPluginInterface pluginInterface, Configuration configuration,
+        QueueCompletionNotification queueNotification)
         : base("Workshoppa - Configuration###WorkshoppaConfigWindow")
 
     {
         _pluginInterface = pluginInterface;
         _configuration = configuration;
+        _queueNotification = queueNotification;
 
         Position = new Vector2(100, 100);
         PositionCondition = ImGuiCond.FirstUseEver;
@@ -47,11 +50,16 @@ internal sealed class ConfigWindow : LWindow, IPersistableWindowConfig
         }
 
         bool notifyInBackground = _configuration.NotifyOnQueueCompletionInBackground;
-        if (ImGui.Checkbox("Notify when queue finishes or fails in the background", ref notifyInBackground))
+        if (ImGui.Checkbox("Desktop alerts for queue completion and failure in the background", ref notifyInBackground))
         {
             _configuration.NotifyOnQueueCompletionInBackground = notifyInBackground;
             _pluginInterface.SavePluginConfig(_configuration);
         }
+
+        if (ImGui.Button("Test desktop alert (3s)"))
+            _queueNotification.ScheduleTest(_pluginInterface.UiBuilder.WindowHandlePtr);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Switch away from FFXIV to test the banner and taskbar flash.");
     }
 
     public void SaveWindowConfig() => _pluginInterface.SavePluginConfig(_configuration);

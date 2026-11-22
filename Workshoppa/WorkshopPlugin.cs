@@ -83,7 +83,7 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
             new IconCache(textureProvider), _chatGui, new RecipeTree(dataManager, _pluginLog), _retainerTransfer,
             _craftTiming, _pluginLog);
         _windowSystem.AddWindow(_mainWindow);
-        _configWindow = new(_pluginInterface, _configuration);
+        _configWindow = new(_pluginInterface, _configuration, _queueNotification);
         _windowSystem.AddWindow(_configWindow);
         _repairKitWindow = new(_pluginLog, _gameGui, addonLifecycle, _configuration,
             _externalPluginHandler);
