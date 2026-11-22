@@ -19,6 +19,9 @@ public enum Stage
 
     ConfirmCollectProduct,
     WaitForCollectedProduct,
+    OpenInventoryBetweenCrafts,
+    CloseInventoryBetweenCrafts,
+    WaitForInventoryClosed,
 
     RequestStop,
     Stopped,

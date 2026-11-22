@@ -221,7 +221,10 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
             {
                 // TODO Error checking, we should ensure the player has the required job level for *all* crafting parts
                 _mainWindow.State = MainWindow.ButtonState.None;
-                CurrentStage = Stage.TakeItemFromQueue;
+                if (_inventoryCyclePending)
+                    BeginInventoryCycle();
+                else
+                    CurrentStage = Stage.TakeItemFromQueue;
                 ResetCraftProgress();
                 SetCraftTimerActive(true);
             }
@@ -231,6 +234,18 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
 
             switch (CurrentStage)
             {
+                case Stage.OpenInventoryBetweenCrafts:
+                    OpenInventoryBetweenCrafts();
+                    break;
+
+                case Stage.CloseInventoryBetweenCrafts:
+                    CloseInventoryBetweenCrafts();
+                    break;
+
+                case Stage.WaitForInventoryClosed:
+                    WaitForInventoryClosed();
+                    break;
+
                 case Stage.TakeItemFromQueue:
                     if (CheckContinueWithDelivery())
                         CurrentStage = Stage.ContributeMaterials;

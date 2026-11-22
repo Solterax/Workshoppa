@@ -86,11 +86,17 @@ partial class WorkshopPlugin
         _configuration.CurrentlyCraftedItem = null;
         _pluginInterface.SavePluginConfig(_configuration);
 
-        CurrentStage = Stage.TakeItemFromQueue;
         _continueAt = DateTime.Now.AddSeconds(0.5);
         MarkCraftProgress();
-        if (!_configuration.RunnableQueue.Any())
+        if (_configuration.RunnableQueue.Any())
+        {
+            BeginInventoryCycle();
+        }
+        else
+        {
+            CurrentStage = Stage.TakeItemFromQueue;
             _queueNotification.Completed(_pluginInterface.UiBuilder.WindowHandlePtr,
                 _configuration.ItemQueue.Any(item => item.IsPaused && item.Quantity > 0));
+        }
     }
 }
