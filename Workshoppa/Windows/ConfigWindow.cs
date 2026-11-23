@@ -56,13 +56,23 @@ internal sealed class ConfigWindow : LWindow, IPersistableWindowConfig
             _pluginInterface.SavePluginConfig(_configuration);
         }
 
+        bool usePopup = _configuration.UseWorkshoppaDesktopPopup;
+        if (ImGui.Checkbox("Use Workshoppa desktop popup", ref usePopup))
+        {
+            _configuration.UseWorkshoppaDesktopPopup = usePopup;
+            _pluginInterface.SavePluginConfig(_configuration);
+        }
+
         if (ImGui.Button("Test desktop alert (3s)"))
             _queueNotification.ScheduleTest(_pluginInterface.UiBuilder.WindowHandlePtr);
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Switch away from FFXIV to test the banner and taskbar flash.");
-        ImGui.TextDisabled(_queueNotification.UsesNotificationMaster
-            ? "Desktop alerts use NotificationMaster."
-            : "Desktop alerts use Windows directly.");
+        if (!usePopup)
+            ImGui.TextDisabled(_queueNotification.UsesNotificationMaster
+                ? "Desktop alerts use NotificationMaster."
+                : "Desktop alerts use Windows directly.");
+        if (_queueNotification.TestStatus is { } testStatus)
+            ImGui.TextWrapped(testStatus);
     }
 
     public void SaveWindowConfig() => _pluginInterface.SavePluginConfig(_configuration);

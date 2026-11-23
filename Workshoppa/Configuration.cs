@@ -17,6 +17,7 @@ internal sealed class Configuration : IPluginConfiguration
     public bool EnableRepairKitCalculator { get; set; } = true;
     public bool EnableCeruleumTankCalculator { get; set; } = true;
     public bool NotifyOnQueueCompletionInBackground { get; set; }
+    public bool UseWorkshoppaDesktopPopup { get; set; }
     public List<Preset> Presets { get; set; } = new();
     public Dictionary<uint, CraftTimingStats> CraftTimes { get; set; } = new();
 
