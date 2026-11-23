@@ -44,7 +44,7 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
     public MainWindow(WorkshopPlugin plugin, IDalamudPluginInterface pluginInterface, IClientState clientState,
         IObjectTable objectTable, Configuration configuration, WorkshopCache workshopCache, IconCache iconCache, IChatGui chatGui,
         RecipeTree recipeTree, RetainerTransfer retainerTransfer, CraftTiming craftTiming, IPluginLog pluginLog)
-        : base("Workshoppa###WorkshoppaMainWindow")
+        : base($"Workshoppa v{typeof(MainWindow).Assembly.GetName().Version!.ToString(3)}###WorkshoppaMainWindow")
     {
         _plugin = plugin;
         _pluginInterface = pluginInterface;
