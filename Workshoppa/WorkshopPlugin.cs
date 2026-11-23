@@ -73,7 +73,8 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
         _retainerTransfer = new RetainerTransfer(gameGui, condition, dataManager, pluginLog);
         _configuration = (Configuration?)_pluginInterface.GetPluginConfig() ?? new Configuration();
         _craftTiming = new CraftTiming(_configuration);
-        _queueNotification = new QueueCompletionNotification(_configuration, _pluginLog);
+        _queueNotification = new QueueCompletionNotification(_configuration, _pluginLog,
+            new NotificationMasterIpc(_pluginInterface, _pluginLog));
         if (_craftTiming.DiscardInterruptedSample())
             _pluginInterface.SavePluginConfig(_configuration);
         _workshopCache = new WorkshopCache(dataManager, _pluginLog);

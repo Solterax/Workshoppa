@@ -60,6 +60,9 @@ internal sealed class ConfigWindow : LWindow, IPersistableWindowConfig
             _queueNotification.ScheduleTest(_pluginInterface.UiBuilder.WindowHandlePtr);
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Switch away from FFXIV to test the banner and taskbar flash.");
+        ImGui.TextDisabled(_queueNotification.UsesNotificationMaster
+            ? "Desktop alerts use NotificationMaster."
+            : "Desktop alerts use Windows directly.");
     }
 
     public void SaveWindowConfig() => _pluginInterface.SavePluginConfig(_configuration);

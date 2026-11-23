@@ -2,10 +2,12 @@ using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Dalamud.Plugin.Services;
+using Workshoppa.External;
 
 namespace Workshoppa;
 
-internal sealed class QueueCompletionNotification(Configuration configuration, IPluginLog log) : IDisposable
+internal sealed class QueueCompletionNotification(Configuration configuration, IPluginLog log,
+    NotificationMasterIpc notificationMaster) : IDisposable
 {
     private static readonly TimeSpan IconLifetime = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan TestDelay = TimeSpan.FromSeconds(3);
@@ -23,6 +25,8 @@ internal sealed class QueueCompletionNotification(Configuration configuration, I
     private nint _iconWindow;
     private (nint Window, long RequestedAt)? _test;
 
+    public bool UsesNotificationMaster => notificationMaster.IsAvailable;
+
     public void Completed(nint gameWindow, bool pausedCraftsRemain) =>
         ShowIfBackground(gameWindow, "Workshoppa queue complete", pausedCraftsRemain
             ? "All unpaused workshop crafts have been collected. Paused crafts remain in the queue."
@@ -33,7 +37,7 @@ internal sealed class QueueCompletionNotification(Configuration configuration, I
 
     public void ScheduleTest(nint gameWindow)
     {
-        if (OperatingSystem.IsWindows() && gameWindow != 0)
+        if (OperatingSystem.IsWindows())
             _test = (gameWindow, Stopwatch.GetTimestamp());
     }
 
@@ -52,17 +56,25 @@ internal sealed class QueueCompletionNotification(Configuration configuration, I
 
     private void ShowIfBackground(nint gameWindow, string title, string message, uint severity)
     {
-        if (configuration.NotifyOnQueueCompletionInBackground && OperatingSystem.IsWindows() &&
-            gameWindow != 0 && NativeMethods.GetForegroundWindow() != gameWindow)
+        if (configuration.NotifyOnQueueCompletionInBackground && IsGameInBackground(gameWindow))
         {
             _test = null;
             ShowNotification(gameWindow, title, message, severity);
         }
     }
 
+    private bool IsGameInBackground(nint gameWindow)
+    {
+        if (notificationMaster.IsGameWindowActive() is { } isActive)
+            return !isActive;
+
+        return OperatingSystem.IsWindows() && gameWindow != 0 && NativeMethods.GetForegroundWindow() != gameWindow;
+    }
+
     private void ShowNotification(nint gameWindow, string title, string message, uint severity)
     {
-        if (severity == WarningIcon && NativeMethods.GetForegroundWindow() != gameWindow)
+        if (severity == WarningIcon && IsGameInBackground(gameWindow) && !notificationMaster.TryFlashTaskbar() &&
+            OperatingSystem.IsWindows() && gameWindow != 0)
         {
             var flash = new FlashWindowInfo
             {
@@ -73,6 +85,9 @@ internal sealed class QueueCompletionNotification(Configuration configuration, I
             };
             NativeMethods.FlashWindowEx(ref flash);
         }
+
+        if (notificationMaster.TryShowToast(title, message) || !OperatingSystem.IsWindows() || gameWindow == 0)
+            return;
 
         RemoveIcon();
         var data = CreateIconData(gameWindow);
