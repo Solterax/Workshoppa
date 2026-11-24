@@ -64,8 +64,8 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
 
         SizeConstraints = new WindowSizeConstraints
         {
-            MinimumSize = new Vector2(350, 50),
-            MaximumSize = new Vector2(500, 9999),
+            MinimumSize = new Vector2(460, 50),
+            MaximumSize = new Vector2(600, 9999),
         };
 
         Flags = ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.MenuBar;
