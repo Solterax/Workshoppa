@@ -9,6 +9,8 @@ namespace Workshoppa;
 
 internal sealed class Configuration : IPluginConfiguration
 {
+    internal const int AutomaticBatchLimit = 20;
+
     public int Version { get; set; } = 1;
 
     public CurrentItem? CurrentlyCraftedItem { get; set; }
@@ -53,13 +55,28 @@ internal sealed class Configuration : IPluginConfiguration
         return null;
     }
 
+    internal bool CompleteAutomaticCraft(CurrentItem current)
+    {
+        var row = current.QueueBatchId is { } id
+            ? ItemQueue.FirstOrDefault(item => item.BatchId == id)
+            : null;
+        if (row == null)
+            return true;
+
+        int remaining = row.IsRunnable ? row.AutomaticBatchRemaining.GetValueOrDefault() - 1 : 0;
+        row.AutomaticBatchRemaining = remaining > 0 ? remaining : null;
+        return remaining <= 0;
+    }
+
     internal sealed class QueuedItem
     {
         public Guid? BatchId { get; set; }
+        public int? AutomaticBatchRemaining { get; set; }
         public uint WorkshopItemId { get; set; }
         public int Quantity { get; set; }
         public bool IsPaused { get; set; }
         internal bool IsRunnable => !IsPaused && Quantity > 0;
+        internal int AutomaticBatchQuantity => Math.Min(Quantity, AutomaticBatchRemaining ?? AutomaticBatchLimit);
     }
 
     internal sealed class CurrentItem

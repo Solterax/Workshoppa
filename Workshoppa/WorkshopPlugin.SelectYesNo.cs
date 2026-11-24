@@ -83,9 +83,7 @@ partial class WorkshopPlugin
     {
         var current = _configuration.CurrentlyCraftedItem;
         bool storeBatch = _configuration.AutomateRetainers && current != null &&
-            (current.QueueBatchId is { } batchId
-                ? !_configuration.RunnableQueue.Any(item => item.BatchId == batchId)
-                : _configuration.RunnableQueue.FirstOrDefault()?.WorkshopItemId != current.WorkshopItemId);
+            _configuration.CompleteAutomaticCraft(current);
         _craftTiming.RecordCompletion();
         _configuration.CurrentlyCraftedItem = null;
         if (storeBatch)

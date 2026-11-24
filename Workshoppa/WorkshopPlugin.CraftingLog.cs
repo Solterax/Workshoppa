@@ -18,7 +18,11 @@ partial class WorkshopPlugin
         {
             var row = _configuration.RunnableQueue.FirstOrDefault();
             if (row != null)
+            {
                 row.BatchId ??= Guid.NewGuid();
+                if (!_configuration.AutomateRetainers)
+                    row.AutomaticBatchRemaining = null;
+            }
             if (_configuration.TakeNextQueuedItem() is { } workshopItemId)
             {
                 _configuration.CurrentlyCraftedItem = new Configuration.CurrentItem

@@ -77,10 +77,15 @@ partial class WorkshopPlugin
 
         if (_configuration.CurrentlyCraftedItem is { } current)
         {
-            if (current.QueueBatchId is { } id &&
-                _configuration.RunnableQueue.FirstOrDefault(row => row.BatchId == id) is { } sameBatch)
+            var row = current.QueueBatchId is { } id
+                ? _configuration.RunnableQueue.FirstOrDefault(item => item.BatchId == id)
+                : _configuration.RunnableQueue.FirstOrDefault();
+            if (row != null && row.WorkshopItemId == current.WorkshopItemId)
             {
-                ActivateAutomaticBatch(sameBatch);
+                row.BatchId ??= Guid.NewGuid();
+                current.QueueBatchId = row.BatchId;
+                int remaining = row.AutomaticBatchRemaining ?? Configuration.AutomaticBatchLimit;
+                ActivateAutomaticBatch(row, (int)Math.Min(row.Quantity + 1L, remaining));
                 _pluginInterface.SavePluginConfig(_configuration);
             }
             return false;
@@ -89,10 +94,10 @@ partial class WorkshopPlugin
         var batch = NextAutomaticBatch();
         if (batch == null)
             return false;
-        if (!GetBatchMaterials(batch.WorkshopItemId, batch.Quantity).All(HasMaterial))
+        if (!GetBatchMaterials(batch.WorkshopItemId, batch.AutomaticBatchQuantity).All(HasMaterial))
             return BeginRetainerTrip(TripReason.PrepareBatch);
 
-        ActivateAutomaticBatch(batch);
+        ActivateAutomaticBatch(batch, batch.AutomaticBatchQuantity);
         _pluginInterface.SavePluginConfig(_configuration);
         return false;
     }
@@ -134,12 +139,7 @@ partial class WorkshopPlugin
         else if (reason is TripReason.StoreBatch or TripReason.PrepareBatch && NextAutomaticBatch() is { } batch)
         {
             _retainerTrip.NextBatch = batch;
-            AddWithdrawal(_retainerTrip, GetBatchMaterials(batch.WorkshopItemId, 1));
-            if (batch.Quantity > 1)
-            {
-                _retainerTrip.Actions.Enqueue(new(_configuration.MaterialsRetainer, RetainerTransfer.TransferKind.WithdrawMaterials,
-                    GetBatchMaterials(batch.WorkshopItemId, batch.Quantity), AllowPartial: true));
-            }
+            AddWithdrawal(_retainerTrip, GetBatchMaterials(batch.WorkshopItemId, batch.AutomaticBatchQuantity));
         }
 
         SetCraftTimerActive(false);
@@ -150,11 +150,14 @@ partial class WorkshopPlugin
     private void AddWithdrawal(RetainerTrip trip, IReadOnlyList<Ingredient> materials) =>
         trip.Actions.Enqueue(new(_configuration.MaterialsRetainer, RetainerTransfer.TransferKind.WithdrawMaterials, materials));
 
-    private void ActivateAutomaticBatch(Configuration.QueuedItem batch)
+    private void ActivateAutomaticBatch(Configuration.QueuedItem batch, int quantity)
     {
         foreach (var row in _configuration.ItemQueue)
             if (row.Quantity > 0)
+            {
                 row.IsPaused = !ReferenceEquals(row, batch);
+                row.AutomaticBatchRemaining = row.IsPaused ? null : quantity;
+            }
     }
 
     private static bool HasMaterial(Ingredient item) => RetainerTransfer.CountInInventory(item.ItemId) >= item.TotalQuantity;
@@ -369,7 +372,7 @@ partial class WorkshopPlugin
             return;
         }
 
-        if (!action.AllowPartial && action.Materials?.FirstOrDefault(item => !HasMaterial(item)) is { } missing)
+        if (action.Materials?.FirstOrDefault(item => !HasMaterial(item)) is { } missing)
         {
             int deficit = missing.TotalQuantity - RetainerTransfer.CountInInventory(missing.ItemId);
             FailCraft($"Still need {deficit}× {missing.Name}. Check {action.Retainer}'s stock and your inventory space.");
@@ -398,8 +401,8 @@ partial class WorkshopPlugin
             return;
         }
 
-        if (trip.NextBatch != null)
-            ActivateAutomaticBatch(trip.NextBatch);
+        if (trip.NextBatch is { } nextBatch)
+            ActivateAutomaticBatch(nextBatch, nextBatch.AutomaticBatchQuantity);
         if (trip.Reason == TripReason.StoreBatch)
             _configuration.PendingWorkshopStorageFor = 0;
 
@@ -505,7 +508,7 @@ partial class WorkshopPlugin
     private enum TripStep { ClearStation, FindBell, OpenBell, SelectRetainer, OpenInventory, StartTransfer, Transfer, LeaveRetainer, CloseBell, Return }
 
     private sealed record RetainerAction(string Retainer, RetainerTransfer.TransferKind Kind,
-        IReadOnlyList<Ingredient>? Materials = null, IReadOnlySet<uint>? DepositItems = null, bool AllowPartial = false);
+        IReadOnlyList<Ingredient>? Materials = null, IReadOnlySet<uint>? DepositItems = null);
 
     private sealed class RetainerTrip(TripReason reason)
     {

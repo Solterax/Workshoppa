@@ -99,7 +99,7 @@ internal sealed class ConfigWindow : LWindow, IPersistableWindowConfig
                 _configuration.SubmarinePartsRetainer = parts;
                 _pluginInterface.SavePluginConfig(_configuration);
             }
-            ImGui.TextWrapped("Enter the names shown at the summoning bell. Uses vnavmesh to walk to the bell. Processes queue rows in order, one batch at a time.");
+            ImGui.TextWrapped($"Enter the names shown at the summoning bell. Uses vnavmesh to walk to the bell. Processes queue rows in order, up to {Configuration.AutomaticBatchLimit} crafts per batch.");
         }
         ImGui.EndDisabled();
     }
