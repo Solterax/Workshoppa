@@ -80,7 +80,7 @@ partial class WorkshopPlugin
                 return null;
 
             AtkUnitBase* addon = LAddon.GetAddonById(addonId);
-            if (LAddon.IsAddonReady(addon))
+            if (addon != null && LAddon.IsAddonReady(addon))
                 return addon;
         }
 

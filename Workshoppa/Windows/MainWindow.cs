@@ -116,7 +116,8 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
                     _checkInventory = !_checkInventory;
 
                 ImGui.SameLine();
-                ImGui.BeginDisabled(!NearFabricationStation || !IsDiscipleOfHand || _retainerTransfer.IsBusy);
+                ImGui.BeginDisabled((!NearFabricationStation && !_plugin.CanResumeRetainerTrip) ||
+                                    !IsDiscipleOfHand || _retainerTransfer.IsBusy);
                 if (currentItem.StartedCrafting)
                 {
                     if (ImGuiComponents.IconButtonWithText(FontAwesomeIcon.Play, "Resume"))
@@ -172,20 +173,33 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
                 _checkInventory = !_checkInventory;
 
             ImGui.SameLine();
-            ImGui.BeginDisabled(!NearFabricationStation || !_configuration.RunnableQueue.Any() ||
-                                _plugin.CurrentStage != Stage.Stopped || !IsDiscipleOfHand || _retainerTransfer.IsBusy);
-            if (ImGuiComponents.IconButtonWithText(FontAwesomeIcon.Play, "Start Crafting"))
+            if (_plugin.CurrentStage == Stage.Stopped)
             {
-                State = ButtonState.Start;
-                _checkInventory = false;
+                bool hasWork = _configuration.AutomateRetainers
+                    ? _plugin.PendingWorkshopStorage || _configuration.ItemQueue.Any(item => item.Quantity > 0)
+                    : _configuration.RunnableQueue.Any();
+                ImGui.BeginDisabled((!NearFabricationStation && !_plugin.CanResumeRetainerTrip) ||
+                                    !hasWork || !IsDiscipleOfHand || _retainerTransfer.IsBusy);
+                if (ImGuiComponents.IconButtonWithText(FontAwesomeIcon.Play,
+                        _configuration.AutomateRetainers && _plugin.PendingWorkshopStorage ? "Resume" : "Start Crafting"))
+                {
+                    State = ButtonState.Start;
+                    _checkInventory = false;
+                }
+
+                ImGui.EndDisabled();
+
+                ShowErrorConditions();
             }
-
-            ImGui.EndDisabled();
-
-            ShowErrorConditions();
+            else if (_plugin.CurrentStage != Stage.RequestStop &&
+                     ImGuiComponents.IconButtonWithText(FontAwesomeIcon.Pause, "Pause"))
+                State = ButtonState.Pause;
         }
 
-        DrawRetainerTransfers();
+        if (_plugin.RetainerTripStatus is { } tripStatus)
+            ImGui.TextWrapped(tripStatus);
+        else
+            DrawRetainerTransfers();
 
         if (_checkInventory)
         {
@@ -215,7 +229,8 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
                     itemToRemove = item;
 
                 ImGui.TableSetColumnIndex(1);
-                using var disabled = ImRaii.Disabled(_retainerTransfer.IsBusy);
+                using var disabled = ImRaii.Disabled(_retainerTransfer.IsBusy ||
+                    (_configuration.AutomateRetainers && _plugin.CurrentStage != Stage.Stopped));
                 if (ImGui.Button(item.IsPaused ? "Resume" : "Pause", new Vector2(pauseButtonWidth, 0)))
                 {
                     item.IsPaused = !item.IsPaused;
@@ -577,7 +592,10 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
         double estimatedSeconds = 0;
         long estimatedItems = 0;
         long unknownItems = 0;
-        foreach (var item in _configuration.RunnableQueue)
+        var planned = _configuration.AutomateRetainers
+            ? _configuration.ItemQueue.Where(item => item.Quantity > 0)
+            : _configuration.RunnableQueue;
+        foreach (var item in planned)
         {
             if (GetCraftAverage(item.WorkshopItemId) is { } average)
             {

@@ -59,7 +59,8 @@ partial class WorkshopPlugin
         var craft = GetCurrentCraft();
         if (!HasRoomForProduct(craft))
         {
-            FailCraft(InventoryFullMessage(craft));
+            if (!BeginRetainerTrip(TripReason.MakeRoom))
+                FailCraft(InventoryFullMessage(craft));
             return false;
         }
 
@@ -89,7 +90,10 @@ partial class WorkshopPlugin
         }
         else if (Stopwatch.GetElapsedTime(collection.StartedAt) >= CollectionTimeout)
         {
-            FailCraft(HasRoomForProduct(collection.Craft)
+            bool hasRoom = HasRoomForProduct(collection.Craft);
+            if (!hasRoom && BeginRetainerTrip(TripReason.MakeRoom))
+                return;
+            FailCraft(hasRoom
                 ? $"The game did not deliver {collection.Craft.Name}. Check for an open game prompt and resume."
                 : InventoryFullMessage(collection.Craft));
         }
@@ -135,6 +139,7 @@ partial class WorkshopPlugin
     private void StopCraft()
     {
         bool wasActive = CurrentStage != Stage.Stopped;
+        EndRetainerTrip();
         _mainWindow.State = MainWindow.ButtonState.None;
         _collection = null;
         _continueAt = DateTime.MinValue;

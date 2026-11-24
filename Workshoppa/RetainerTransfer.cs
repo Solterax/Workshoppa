@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -43,14 +43,19 @@ internal sealed unsafe class RetainerTransfer(IGameGui gameGui, ICondition condi
     private long _lastMove;
     private int _moved;
     private int _skipped;
+    private IReadOnlySet<uint>? _depositItemIds;
 
     public bool IsOpen => GetSession() != default;
+    public ulong OpenRetainerId => GetSession().RetainerId;
+    public static bool InventoriesReady => PlayerPages.All(IsLoaded) && RetainerPages.All(IsLoaded);
     public bool IsBusy => _session != default;
+    public bool FinishedNormally { get; private set; }
     public string Status { get; private set; } = string.Empty;
     private bool IsWithdrawal => _kind == TransferKind.WithdrawMaterials;
     private InventoryType[] Destinations => IsWithdrawal ? PlayerPages : RetainerPages;
 
-    public void Start(TransferKind kind, IReadOnlyList<Ingredient>? materials = null)
+    public void Start(TransferKind kind, IReadOnlyList<Ingredient>? materials = null,
+        IReadOnlySet<uint>? depositItemIds = null)
     {
         if (IsBusy)
             return;
@@ -65,11 +70,13 @@ internal sealed unsafe class RetainerTransfer(IGameGui gameGui, ICondition condi
         _required = materials?.Where(x => x.TotalQuantity > 0)
             .ToDictionary(x => x.ItemId, x => x.TotalQuantity) ?? new();
         _kind = kind;
+        _depositItemIds = depositItemIds;
         _session = session;
         _initialize = true;
         _stopRequested = false;
         _lastMove = 0;
         _moved = _skipped = 0;
+        FinishedNormally = false;
         Status = "Preparing transfer…";
     }
 
@@ -108,7 +115,7 @@ internal sealed unsafe class RetainerTransfer(IGameGui gameGui, ICondition condi
         if (_initialize)
         {
             _initialize = false;
-            if (!PlayerPages.All(IsLoaded) || !RetainerPages.All(IsLoaded))
+            if (!InventoriesReady)
             {
                 Finish("The inventories are still loading. Try again when they are open.");
                 return;
@@ -174,6 +181,7 @@ internal sealed unsafe class RetainerTransfer(IGameGui gameGui, ICondition condi
             return;
         }
 
+        FinishedNormally = true;
         if (IsWithdrawal)
         {
             int missing = _required.Keys.Sum(GetShortfall);
@@ -187,7 +195,6 @@ internal sealed unsafe class RetainerTransfer(IGameGui gameGui, ICondition condi
 
     private void CaptureSourceSlots()
     {
-        var items = dataManager.GetExcelSheet<Item>();
         foreach (var type in IsWithdrawal ? RetainerPages : PlayerPages)
         {
             var container = GetContainer(type);
@@ -198,14 +205,39 @@ internal sealed unsafe class RetainerTransfer(IGameGui gameGui, ICondition condi
                     continue;
 
                 if (IsWithdrawal ? !_required.ContainsKey(stack.BaseId)
-                    : !items.TryGetRow(stack.BaseId, out var row) ||
-                      (row.ItemUICategory.RowId is >= SubmersibleHullCategory and <= SubmersibleBridgeCategory)
-                          != (_kind == TransferKind.DepositSubmarineParts))
+                    : !MatchesDeposit(stack, _kind, _depositItemIds))
                     continue;
 
                 _sources.Enqueue(new Slot(type, i, stack));
             }
         }
+    }
+
+    public bool HasItemsToDeposit(TransferKind kind, IReadOnlySet<uint>? itemIds = null)
+    {
+        foreach (var type in PlayerPages)
+        {
+            var container = GetContainer(type);
+            if (container == null)
+                continue;
+            for (int index = 0; index < container->Size; index++)
+            {
+                if (MatchesDeposit(Read(type, index), kind, itemIds))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool MatchesDeposit(Stack stack, TransferKind kind, IReadOnlySet<uint>? itemIds)
+    {
+        if (stack.RawId == 0 || (itemIds != null && (stack.Collectable || !itemIds.Contains(stack.BaseId))) ||
+            !dataManager.GetExcelSheet<Item>().TryGetRow(stack.BaseId, out var item))
+            return false;
+
+        bool submarinePart = item.ItemUICategory.RowId is >= SubmersibleHullCategory and <= SubmersibleBridgeCategory;
+        return submarinePart == (kind == TransferKind.DepositSubmarineParts);
     }
 
     private bool CheckPendingMove(PendingMove move)

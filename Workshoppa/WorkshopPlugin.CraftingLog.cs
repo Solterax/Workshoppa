@@ -16,12 +16,16 @@ partial class WorkshopPlugin
     {
         if (_configuration.CurrentlyCraftedItem == null)
         {
+            var row = _configuration.RunnableQueue.FirstOrDefault();
+            if (row != null)
+                row.BatchId ??= Guid.NewGuid();
             if (_configuration.TakeNextQueuedItem() is { } workshopItemId)
             {
                 _configuration.CurrentlyCraftedItem = new Configuration.CurrentItem
                 {
                     WorkshopItemId = workshopItemId,
                     ActiveCraftSeconds = 0,
+                    QueueBatchId = row?.BatchId,
                 };
             }
 

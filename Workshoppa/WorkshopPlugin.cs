@@ -30,6 +30,7 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
     private readonly IFramework _framework;
     private readonly ICondition _condition;
     private readonly IClientState _clientState;
+    private readonly IPlayerState _playerState;
     private readonly IObjectTable _objectTable;
     private readonly ICommandManager _commandManager;
     private readonly IPluginLog _pluginLog;
@@ -56,14 +57,16 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
     public WorkshopPlugin(IDalamudPluginInterface pluginInterface, IGameGui gameGui, IFramework framework,
         ICondition condition, IClientState clientState, IObjectTable objectTable, IDataManager dataManager,
         ICommandManager commandManager, IPluginLog pluginLog, IAddonLifecycle addonLifecycle, IChatGui chatGui,
-        ITextureProvider textureProvider)
+        ITextureProvider textureProvider, IPlayerState playerState)
     {
         _pluginInterface = pluginInterface;
         _gameGui = gameGui;
         _framework = framework;
         _condition = condition;
         _clientState = clientState;
+        _playerState = playerState;
         _objectTable = objectTable;
+        _dataManager = dataManager;
         _commandManager = commandManager;
         _pluginLog = pluginLog;
         _addonLifecycle = addonLifecycle;
@@ -71,6 +74,7 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
 
         _externalPluginHandler = new ExternalPluginHandler(_pluginInterface, _pluginLog);
         _retainerTransfer = new RetainerTransfer(gameGui, condition, dataManager, pluginLog);
+        _workshopNavigation = new WorkshopNavigation(pluginInterface);
         _configuration = (Configuration?)_pluginInterface.GetPluginConfig() ?? new Configuration();
         _craftTiming = new CraftTiming(_configuration);
         _queueNotification = new QueueCompletionNotification(_configuration, _pluginLog,
@@ -84,7 +88,7 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
             new IconCache(textureProvider), _chatGui, new RecipeTree(dataManager, _pluginLog), _retainerTransfer,
             _craftTiming, _pluginLog);
         _windowSystem.AddWindow(_mainWindow);
-        _configWindow = new(_pluginInterface, _configuration, _queueNotification);
+        _configWindow = new(_pluginInterface, _configuration, _queueNotification, () => CurrentStage != Stage.Stopped);
         _windowSystem.AddWindow(_configWindow);
         _repairKitWindow = new(_pluginLog, _gameGui, addonLifecycle, _configuration,
             _externalPluginHandler);
@@ -143,6 +147,8 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
     private void FrameworkUpdate(IFramework framework)
     {
         _queueNotification.Update();
+        if (_retainerTrip != null && _mainWindow.State is MainWindow.ButtonState.Pause or MainWindow.ButtonState.Stop)
+            StopCraft();
         _retainerTransfer.Update();
 
         try
@@ -172,8 +178,37 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
 
         if (!_clientState.IsLoggedIn && CurrentStage is not (Stage.Stopped or Stage.RequestStop))
         {
+            _returnTerritory = 0;
             FailCraft("The character logged out or disconnected before the workshop queue finished.");
             return;
+        }
+
+        if (_retainerTrip is { } trip)
+        {
+            UpdateRetainerTrip(trip);
+            return;
+        }
+
+        if (_clientState.IsLoggedIn && WorkshopTerritories.Contains(_clientState.TerritoryType) &&
+            !_condition[ConditionFlag.BoundByDuty] && !_condition[ConditionFlag.BetweenAreas] &&
+            !_condition[ConditionFlag.BetweenAreas51] && !_retainerTransfer.IsBusy &&
+            CurrentStage == Stage.Stopped &&
+            _mainWindow.State is MainWindow.ButtonState.Start or MainWindow.ButtonState.Resume &&
+            (CanResumeRetainerTrip || GetDistanceToEventObject(_fabricationStationIds, out _) < 3f))
+        {
+            _mainWindow.State = MainWindow.ButtonState.None;
+            if (StartAutomaticRun())
+            {
+                if (CurrentStage == Stage.RetainerTrip && !_externalPluginHandler.Saved)
+                    _externalPluginHandler.Save();
+                return;
+            }
+
+            if (_inventoryCyclePending)
+                BeginInventoryCycle();
+            else
+                CurrentStage = Stage.TakeItemFromQueue;
+            ResetCraftProgress();
         }
 
         if (!_clientState.IsLoggedIn ||
@@ -215,19 +250,6 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
             {
                 _mainWindow.IsOpen = true;
                 _mainWindow.OpenReason = MainWindow.EOpenReason.NearFabricationStation;
-            }
-
-            if (_mainWindow.State is MainWindow.ButtonState.Start or MainWindow.ButtonState.Resume &&
-                     CurrentStage == Stage.Stopped && !_retainerTransfer.IsBusy)
-            {
-                // TODO Error checking, we should ensure the player has the required job level for *all* crafting parts
-                _mainWindow.State = MainWindow.ButtonState.None;
-                if (_inventoryCyclePending)
-                    BeginInventoryCycle();
-                else
-                    CurrentStage = Stage.TakeItemFromQueue;
-                ResetCraftProgress();
-                SetCraftTimerActive(true);
             }
 
             if (CurrentStage != Stage.Stopped && CurrentStage != Stage.RequestStop && !_externalPluginHandler.Saved)
@@ -363,6 +385,8 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
 
     public void Dispose()
     {
+        EndRetainerTrip();
+        _workshopNavigation.Dispose();
         SetCraftTimerActive(false);
         _addonLifecycle.UnregisterListener(AddonEvent.PostUpdate, "ContextIconMenu", ContextIconMenuPostReceiveEvent);
         _addonLifecycle.UnregisterListener(AddonEvent.PostRefresh, "Request", RequestPostRefresh);

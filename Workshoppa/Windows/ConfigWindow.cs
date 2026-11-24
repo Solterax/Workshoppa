@@ -1,4 +1,5 @@
-﻿using System.Numerics;
+﻿using System;
+using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
@@ -11,15 +12,17 @@ internal sealed class ConfigWindow : LWindow, IPersistableWindowConfig
     private readonly IDalamudPluginInterface _pluginInterface;
     private readonly Configuration _configuration;
     private readonly QueueCompletionNotification _queueNotification;
+    private readonly Func<bool> _isCrafting;
 
     public ConfigWindow(IDalamudPluginInterface pluginInterface, Configuration configuration,
-        QueueCompletionNotification queueNotification)
+        QueueCompletionNotification queueNotification, Func<bool> isCrafting)
         : base("Workshoppa - Configuration###WorkshoppaConfigWindow")
 
     {
         _pluginInterface = pluginInterface;
         _configuration = configuration;
         _queueNotification = queueNotification;
+        _isCrafting = isCrafting;
 
         Position = new Vector2(100, 100);
         PositionCondition = ImGuiCond.FirstUseEver;
@@ -73,6 +76,32 @@ internal sealed class ConfigWindow : LWindow, IPersistableWindowConfig
                 : "Desktop alerts use Windows directly.");
         if (_queueNotification.TestStatus is { } testStatus)
             ImGui.TextWrapped(testStatus);
+
+        ImGui.Separator();
+        ImGui.BeginDisabled(_isCrafting());
+        bool automatic = _configuration.AutomateRetainers;
+        if (ImGui.Checkbox("Automate crafting and retainer trips", ref automatic))
+        {
+            _configuration.AutomateRetainers = automatic;
+            _pluginInterface.SavePluginConfig(_configuration);
+        }
+        if (automatic)
+        {
+            string materials = _configuration.MaterialsRetainer ?? string.Empty;
+            string parts = _configuration.SubmarinePartsRetainer ?? string.Empty;
+            if (ImGui.InputText("Materials retainer", ref materials, 64))
+            {
+                _configuration.MaterialsRetainer = materials;
+                _pluginInterface.SavePluginConfig(_configuration);
+            }
+            if (ImGui.InputText("Submarine parts retainer", ref parts, 64))
+            {
+                _configuration.SubmarinePartsRetainer = parts;
+                _pluginInterface.SavePluginConfig(_configuration);
+            }
+            ImGui.TextWrapped("Enter the names shown at the summoning bell. Uses vnavmesh to walk to the bell. Processes queue rows in order, one batch at a time.");
+        }
+        ImGui.EndDisabled();
     }
 
     public void SaveWindowConfig() => _pluginInterface.SavePluginConfig(_configuration);

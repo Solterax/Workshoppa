@@ -22,6 +22,7 @@ public enum Stage
     OpenInventoryBetweenCrafts,
     CloseInventoryBetweenCrafts,
     WaitForInventoryClosed,
+    RetainerTrip,
 
     RequestStop,
     Stopped,

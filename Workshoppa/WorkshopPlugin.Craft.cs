@@ -108,6 +108,8 @@ partial class WorkshopPlugin
             if (!HasItemInSingleSlot(item.ItemId, item.ItemCountPerStep))
             {
                 int itemCount = RetainerTransfer.CountInInventory(item.ItemId);
+                if (itemCount < item.ItemCountPerStep && BeginRetainerTrip(TripReason.ReplenishCraft))
+                    break;
                 var reason = itemCount < item.ItemCountPerStep
                     ? $"Missing materials: need {item.ItemCountPerStep}× {item.ItemName}, have {itemCount}."
                     : $"Split stacks: merge {item.ItemCountPerStep}× {item.ItemName} into a single stack.";

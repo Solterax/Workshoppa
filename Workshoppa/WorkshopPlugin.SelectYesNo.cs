@@ -81,12 +81,22 @@ partial class WorkshopPlugin
 
     private void ConfirmCollectProductFollowUp()
     {
+        var current = _configuration.CurrentlyCraftedItem;
+        bool storeBatch = _configuration.AutomateRetainers && current != null &&
+            (current.QueueBatchId is { } batchId
+                ? !_configuration.RunnableQueue.Any(item => item.BatchId == batchId)
+                : _configuration.RunnableQueue.FirstOrDefault()?.WorkshopItemId != current.WorkshopItemId);
         _craftTiming.RecordCompletion();
         _configuration.CurrentlyCraftedItem = null;
+        if (storeBatch)
+            _configuration.PendingWorkshopStorageFor = _playerState.ContentId;
         _pluginInterface.SavePluginConfig(_configuration);
 
         _continueAt = DateTime.Now.AddSeconds(0.5);
         MarkCraftProgress();
+        if (storeBatch && BeginRetainerTrip(TripReason.StoreBatch))
+            return;
+
         if (_configuration.RunnableQueue.Any())
         {
             BeginInventoryCycle();

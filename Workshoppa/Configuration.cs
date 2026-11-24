@@ -18,6 +18,10 @@ internal sealed class Configuration : IPluginConfiguration
     public bool EnableCeruleumTankCalculator { get; set; } = true;
     public bool NotifyOnQueueCompletionInBackground { get; set; }
     public bool UseWorkshoppaDesktopPopup { get; set; }
+    public bool AutomateRetainers { get; set; }
+    public string MaterialsRetainer { get; set; } = string.Empty;
+    public string SubmarinePartsRetainer { get; set; } = string.Empty;
+    public ulong PendingWorkshopStorageFor { get; set; }
     public List<Preset> Presets { get; set; } = new();
     public Dictionary<uint, CraftTimingStats> CraftTimes { get; set; } = new();
 
@@ -51,6 +55,7 @@ internal sealed class Configuration : IPluginConfiguration
 
     internal sealed class QueuedItem
     {
+        public Guid? BatchId { get; set; }
         public uint WorkshopItemId { get; set; }
         public int Quantity { get; set; }
         public bool IsPaused { get; set; }
@@ -61,6 +66,7 @@ internal sealed class Configuration : IPluginConfiguration
     {
         public uint WorkshopItemId { get; set; }
         public bool StartedCrafting { get; set; }
+        public Guid? QueueBatchId { get; set; }
         public double? ActiveCraftSeconds { get; set; }
         public bool CraftTimerRunning { get; set; }
 
