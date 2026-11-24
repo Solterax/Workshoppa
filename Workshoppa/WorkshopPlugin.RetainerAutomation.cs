@@ -7,10 +7,10 @@ using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Plugin.Services;
-using ECommons.UIHelpers.AddonMasterImplementations;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
+using FFXIVClientStructs.FFXIV.Component.GUI;
 using LLib.GameUI;
 using Lumina.Excel.Sheets;
 using Workshoppa.External;
@@ -251,17 +251,17 @@ partial class WorkshopPlugin
             case TripStep.SelectRetainer:
                 var listAddon = GetVisibleInventoryCycleAddon("RetainerList");
                 if (!_condition[ConditionFlag.OccupiedSummoningBell] || listAddon == null || !LAddon.IsAddonReady(listAddon) ||
-                    GetVisibleInventoryCycleAddon("SelectString") != null)
-                    break;
-                var entries = new AddonMaster.RetainerList(listAddon).Retainers;
-                if (entries.Length == 0)
+                    GetVisibleInventoryCycleAddon("SelectString") != null || listAddon->AtkValues == null)
                     break;
                 var name = trip.Actions.Peek().Retainer;
-                var entry = entries.FirstOrDefault(x => SameRetainerName(x.Name, name));
-                if (entry == null || !entry.Select())
-                    FailCraft($"Retainer \"{name}\" is unavailable. Check the name and venture status, then resume.");
-                else
+                var values = new ReadOnlySpan<AtkValue>(listAddon->AtkValues, listAddon->AtkValuesCount);
+                if (RetainerListSelection.FindIndex(values, name, out bool hasEntries) is { } index)
+                {
+                    RetainerListSelection.Select(listAddon, index);
                     trip.GoTo(TripStep.OpenInventory);
+                }
+                else if (hasEntries)
+                    FailCraft($"Retainer \"{name}\" is unavailable. Check the name and venture status, then resume.");
                 break;
             case TripStep.OpenInventory:
                 if (!IsSelectedRetainer(trip.Actions.Peek().Retainer, out var retainerId))
