@@ -93,7 +93,7 @@ partial class WorkshopPlugin
             LAddon.IsAddonReady(&addonSelectString->AtkUnitBase))
         {
             int entries = addonSelectString->PopupMenu.PopupMenu.EntryCount;
-            if (entries < choice)
+            if (choice < 0 || choice >= entries)
                 return false;
 
             CStringPointer textPointer = addonSelectString->PopupMenu.PopupMenu.EntryNames[choice];

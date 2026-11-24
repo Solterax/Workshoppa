@@ -40,6 +40,8 @@ partial class WorkshopPlugin
     {
         TripStep.ClearStation => "Closing the fabrication station.",
         TripStep.FindBell => "Walking to the summoning bell.",
+        TripStep.OpenInventory => "Selecting Entrust or withdraw items.",
+        TripStep.StartTransfer => "Waiting for the selected retainer's inventory.",
         TripStep.Return => "Returning to the fabrication station.",
         TripStep.Transfer => _retainerTransfer.Status,
         _ => trip.Actions.TryPeek(out var action) ? $"Using retainer {action.Retainer}." : "Leaving the summoning bell.",
@@ -264,10 +266,9 @@ partial class WorkshopPlugin
                     FailCraft($"Retainer \"{name}\" is unavailable. Check the name and venture status, then resume.");
                 break;
             case TripStep.OpenInventory:
-                if (!IsSelectedRetainer(trip.Actions.Peek().Retainer, out var retainerId))
-                    break;
-                trip.RetainerId = retainerId;
-                if (SelectRetainerMenuItem(2378))
+                if (_condition[ConditionFlag.OccupiedSummoningBell] &&
+                    SelectSelectString("retainer inventory", 0, text => RetainerMenuText.MatchesInventoryOption(text,
+                        _dataManager.GetExcelSheet<Addon>().GetRow(2378).Text.ExtractText())))
                     trip.GoTo(TripStep.StartTransfer);
                 break;
             case TripStep.StartTransfer:
@@ -314,10 +315,12 @@ partial class WorkshopPlugin
 
     private void StartRetainerTransfer(RetainerTrip trip)
     {
-        if (_retainerTransfer.OpenRetainerId != trip.RetainerId || !RetainerTransfer.InventoriesReady)
+        var action = trip.Actions.Peek();
+        if (!IsSelectedRetainer(action.Retainer, out var retainerId) ||
+            _retainerTransfer.OpenRetainerId != retainerId || !RetainerTransfer.InventoriesReady)
             return;
 
-        var action = trip.Actions.Peek();
+        trip.RetainerId = retainerId;
         _retainerTransfer.Start(action.Kind, action.Materials, action.DepositItems);
         trip.GoTo(TripStep.Transfer);
     }
