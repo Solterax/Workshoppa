@@ -41,13 +41,10 @@ partial class WorkshopPlugin
             {
                 if (obj.ObjectKind == ObjectKind.EventObj)
                 {
-                    if (npcIds.Contains(obj.DataId))
+                    if (npcIds.Contains(obj.BaseId))
                     {
                         o = obj;
-                        float distance = Vector3.Distance(localPlayerPosition.Value,
-                            obj.Position + new Vector3(0, -2, 0));
-                        if (distance > 0.01)
-                            return distance;
+                        return Vector3.Distance(localPlayerPosition.Value, GetEventObjectInteractionPosition(obj));
                     }
                 }
             }
@@ -56,6 +53,9 @@ partial class WorkshopPlugin
         o = null;
         return float.MaxValue;
     }
+
+    private static Vector3 GetEventObjectInteractionPosition(IGameObject obj) =>
+        obj.Position - new Vector3(0, 2, 0);
 
     private unsafe AtkUnitBase* GetCompanyCraftingLogAddon()
     {

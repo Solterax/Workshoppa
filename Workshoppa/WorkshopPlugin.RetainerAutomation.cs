@@ -104,13 +104,13 @@ partial class WorkshopPlugin
 
         if (_objectTable.LocalPlayer == null ||
             (!CanResumeRetainerTrip &&
-             GetDistanceToEventObject(_fabricationStationIds, out _) >= 3))
+             GetDistanceToEventObject(_fabricationStationIds, out _) >= StationApproach.InteractionRange))
         {
             FailCraft("Start retainer automation at the fabrication station.");
             return true;
         }
 
-        if (GetDistanceToEventObject(_fabricationStationIds, out _) < 3)
+        if (GetDistanceToEventObject(_fabricationStationIds, out _) < StationApproach.InteractionRange)
         {
             _returnTerritory = _clientState.TerritoryType;
             _returnCharacter = _playerState.ContentId;
@@ -238,7 +238,7 @@ partial class WorkshopPlugin
                     _workshopNavigation.Stop();
                     trip.GoTo(TripStep.OpenBell);
                 }
-                else if (_workshopNavigation.Update(player.Position, bell.Position) is { } bellError)
+                else if (_workshopNavigation.Update(player.Position, bell.Position, out _) is { } bellError)
                     FailCraft(bellError);
                 break;
             case TripStep.OpenBell:
@@ -298,12 +298,41 @@ partial class WorkshopPlugin
             case TripStep.Return:
                 if (_condition[ConditionFlag.OccupiedSummoningBell] || _condition[ConditionFlag.OccupiedInEvent])
                     break;
-                if (GetDistanceToEventObject(_fabricationStationIds, out _) < 3)
-                    FinishRetainerTrip(trip);
-                else if (_workshopNavigation.Update(player.Position, _stationReturnPosition) is { } stationError)
-                    FailCraft(stationError);
+                ReturnToFabricationStation(trip, player.Position);
                 break;
         }
+    }
+
+    private void ReturnToFabricationStation(RetainerTrip trip, Vector3 playerPosition)
+    {
+        float distance = GetDistanceToEventObject(_fabricationStationIds, out var station);
+        if (station == null)
+            return;
+
+        if (distance < StationApproach.InteractionRange)
+        {
+            FinishRetainerTrip(trip);
+            return;
+        }
+
+        Vector3 interactionPosition = GetEventObjectInteractionPosition(station);
+        var targets = trip.StationApproaches ??=
+            StationApproach.GetTargets(interactionPosition, playerPosition, _stationReturnPosition);
+        Vector3 target = targets[trip.StationApproachIndex];
+        var error = _workshopNavigation.Update(playerPosition, target, out bool canRetry,
+            endpoint => StationApproach.IsEndpointInRange(endpoint, interactionPosition));
+        if (error == null)
+            return;
+
+        if (canRetry && trip.StationApproachIndex + 1 < targets.Length)
+        {
+            _pluginLog.Debug($"Retrying the fabrication station approach from {distance:F1} yalms. {error}");
+            _workshopNavigation.Stop();
+            trip.StationApproachIndex++;
+            return;
+        }
+
+        FailCraft($"Could not get within reach of the fabrication station ({distance:F1} yalms away). {error}");
     }
 
     private void SkipUnneededTransfers(RetainerTrip trip)
@@ -492,6 +521,8 @@ partial class WorkshopPlugin
         public Queue<RetainerAction> Actions { get; } = new();
         public Configuration.QueuedItem? NextBatch { get; set; }
         public ulong RetainerId { get; set; }
+        public Vector3[]? StationApproaches { get; set; }
+        public int StationApproachIndex { get; set; }
         public bool SuppressedAutoRetainer { get; set; }
 
         public void GoTo(TripStep step)

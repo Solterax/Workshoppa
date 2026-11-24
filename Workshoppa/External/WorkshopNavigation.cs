@@ -24,15 +24,23 @@ internal sealed class WorkshopNavigation(IDalamudPluginInterface pluginInterface
     private Task<List<Vector3>>? _waypoints;
     private bool _walking;
 
-    public string? Update(Vector3 position, Vector3 destination)
+    public string? Update(Vector3 position, Vector3 destination, out bool canRetry,
+        Func<Vector3, bool>? canUseEndpoint = null)
     {
+        canRetry = false;
         if (!_ready.HasFunction || !_pathfind.HasFunction)
             return "Install and enable vnavmesh to walk between the fabrication station and summoning bell.";
         if (!_ready.InvokeFunc())
             return null;
 
         if (_walking)
-            return _running.InvokeFunc() ? null : "vnavmesh stopped before reaching the destination.";
+        {
+            if (_running.InvokeFunc())
+                return null;
+            _walking = false;
+            canRetry = true;
+            return "vnavmesh stopped before reaching the destination.";
+        }
 
         if (_running.InvokeFunc() || _simpleMove.InvokeFunc())
             return "vnavmesh is already moving your character for another task.";
@@ -40,7 +48,10 @@ internal sealed class WorkshopNavigation(IDalamudPluginInterface pluginInterface
         if (_waypoints == null)
         {
             if (_nearest.InvokeFunc(destination, 3, 3) is not { } target)
+            {
+                canRetry = true;
                 return "vnavmesh could not find a walkable point near the destination.";
+            }
             _cancelPath = new CancellationTokenSource();
             _waypoints = _pathfind.InvokeFunc(position, target, false, _cancelPath.Token);
             return null;
@@ -51,7 +62,14 @@ internal sealed class WorkshopNavigation(IDalamudPluginInterface pluginInterface
         if (!_waypoints.IsCompletedSuccessfully || _waypoints.Result.Count == 0)
         {
             _ = _waypoints.Exception;
+            canRetry = true;
             return "vnavmesh could not find a route to the destination.";
+        }
+
+        if (canUseEndpoint != null && !canUseEndpoint(_waypoints.Result[^1]))
+        {
+            canRetry = true;
+            return "vnavmesh's route ends outside interaction range.";
         }
 
         _move.InvokeAction(_waypoints.Result, false);

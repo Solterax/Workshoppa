@@ -194,7 +194,7 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
             !_condition[ConditionFlag.BetweenAreas51] && !_retainerTransfer.IsBusy &&
             CurrentStage == Stage.Stopped &&
             _mainWindow.State is MainWindow.ButtonState.Start or MainWindow.ButtonState.Resume &&
-            (CanResumeRetainerTrip || GetDistanceToEventObject(_fabricationStationIds, out _) < 3f))
+            (CanResumeRetainerTrip || GetDistanceToEventObject(_fabricationStationIds, out _) < StationApproach.InteractionRange))
         {
             _mainWindow.State = MainWindow.ButtonState.None;
             if (StartAutomaticRun())
@@ -216,7 +216,7 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
             _condition[ConditionFlag.BoundByDuty] ||
             _condition[ConditionFlag.BetweenAreas] ||
             _condition[ConditionFlag.BetweenAreas51] ||
-            GetDistanceToEventObject(_fabricationStationIds, out var fabricationStation) >= 3f)
+            GetDistanceToEventObject(_fabricationStationIds, out var fabricationStation) >= StationApproach.InteractionRange)
         {
             SetCraftTimerActive(false);
             _mainWindow.NearFabricationStation = false;
