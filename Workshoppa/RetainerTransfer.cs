@@ -156,7 +156,7 @@ internal sealed unsafe class RetainerTransfer(IGameGui gameGui, ICondition condi
             if (requested <= 0)
                 continue;
 
-            var (count, capacity) = MeasureDestination(source.Item, (int)item.StackSize);
+            var (count, capacity) = MeasureDestination(source.Item, (int)item.StackSize, Destinations);
             int amount = Math.Min(requested, capacity);
             if (amount <= 0)
             {
@@ -205,7 +205,7 @@ internal sealed unsafe class RetainerTransfer(IGameGui gameGui, ICondition condi
                     continue;
 
                 if (IsWithdrawal ? !_required.ContainsKey(stack.BaseId)
-                    : !MatchesDeposit(stack, _kind, _depositItemIds))
+                    : !MatchesDeposit(stack, _kind, _depositItemIds, out _))
                     continue;
 
                 _sources.Enqueue(new Slot(type, i, stack));
@@ -213,7 +213,8 @@ internal sealed unsafe class RetainerTransfer(IGameGui gameGui, ICondition condi
         }
     }
 
-    public bool HasItemsToDeposit(TransferKind kind, IReadOnlySet<uint>? itemIds = null)
+    public bool HasItemsToDeposit(TransferKind kind, IReadOnlySet<uint>? itemIds = null,
+        bool requireRetainerSpace = false)
     {
         foreach (var type in PlayerPages)
         {
@@ -222,7 +223,9 @@ internal sealed unsafe class RetainerTransfer(IGameGui gameGui, ICondition condi
                 continue;
             for (int index = 0; index < container->Size; index++)
             {
-                if (MatchesDeposit(Read(type, index), kind, itemIds))
+                var stack = Read(type, index);
+                if (MatchesDeposit(stack, kind, itemIds, out var item) &&
+                    (!requireRetainerSpace || MeasureDestination(stack, (int)item.StackSize, RetainerPages).Capacity > 0))
                     return true;
             }
         }
@@ -230,10 +233,11 @@ internal sealed unsafe class RetainerTransfer(IGameGui gameGui, ICondition condi
         return false;
     }
 
-    private bool MatchesDeposit(Stack stack, TransferKind kind, IReadOnlySet<uint>? itemIds)
+    private bool MatchesDeposit(Stack stack, TransferKind kind, IReadOnlySet<uint>? itemIds, out Item item)
     {
+        item = default;
         if (stack.RawId == 0 || (itemIds != null && (stack.Collectable || !itemIds.Contains(stack.BaseId))) ||
-            !dataManager.GetExcelSheet<Item>().TryGetRow(stack.BaseId, out var item))
+            !dataManager.GetExcelSheet<Item>().TryGetRow(stack.BaseId, out item))
             return false;
 
         bool submarinePart = item.ItemUICategory.RowId is >= SubmersibleHullCategory and <= SubmersibleBridgeCategory;
@@ -254,7 +258,7 @@ internal sealed unsafe class RetainerTransfer(IGameGui gameGui, ICondition condi
         int decrease = original.Quantity - source.Quantity;
         if (decrease > 0)
         {
-            var (destinationCount, _) = MeasureDestination(original, 1);
+            var (destinationCount, _) = MeasureDestination(original, 1, Destinations);
             int increase = destinationCount - move.DestinationCount;
             if (!move.WaitingForQuantity && decrease <= move.Amount && increase == decrease)
             {
@@ -304,11 +308,11 @@ internal sealed unsafe class RetainerTransfer(IGameGui gameGui, ICondition condi
         return false;
     }
 
-    private (int Count, int Capacity) MeasureDestination(Stack source, int stackLimit)
+    private static (int Count, int Capacity) MeasureDestination(Stack source, int stackLimit, InventoryType[] pages)
     {
         int count = 0;
         int capacity = 0;
-        foreach (var type in Destinations)
+        foreach (var type in pages)
         {
             var container = GetContainer(type);
             if (container == null)

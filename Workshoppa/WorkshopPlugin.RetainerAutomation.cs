@@ -360,7 +360,8 @@ partial class WorkshopPlugin
     private unsafe void FinishRetainerTransfer(RetainerTrip trip)
     {
         var action = trip.Actions.Peek();
-        if (!_retainerTransfer.FinishedNormally || _retainerTransfer.OpenRetainerId != trip.RetainerId)
+        if (!_retainerTransfer.FinishedNormally || _retainerTransfer.OpenRetainerId != trip.RetainerId ||
+            !RetainerTransfer.InventoriesReady)
         {
             FailCraft($"The transfer with {action.Retainer} stopped. {_retainerTransfer.Status}");
             return;
@@ -368,8 +369,13 @@ partial class WorkshopPlugin
 
         if (action.Materials == null && _retainerTransfer.HasItemsToDeposit(action.Kind, action.DepositItems))
         {
-            FailCraft($"Could not deposit every item with {action.Retainer}. Check the retainer's free space and resume.");
-            return;
+            if (_retainerTransfer.HasItemsToDeposit(action.Kind, action.DepositItems, requireRetainerSpace: true))
+            {
+                FailCraft($"Some items that still fit on {action.Retainer} could not be deposited. Check both inventories and resume.");
+                return;
+            }
+
+            _pluginLog.Information($"{action.Retainer} has no room for the remaining items. Leaving them in your inventory.");
         }
 
         if (action.Materials?.FirstOrDefault(item => !HasMaterial(item)) is { } missing)
