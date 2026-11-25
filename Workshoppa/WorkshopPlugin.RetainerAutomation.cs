@@ -49,7 +49,7 @@ partial class WorkshopPlugin
         TripStep.Return => "Returning to the fabrication station.",
         TripStep.Transfer => _retainerTransfer.Status,
         _ => trip.Actions.TryPeek(out var action) ? $"Using retainer {action.Retainer}." : "Leaving the summoning bell.",
-    } : null;
+    } : CurrentStage == Stage.TravelToWorkshop ? "Travelling to the Company Workshop." : null;
 
     private Configuration.QueuedItem? NextAutomaticBatch() =>
         _configuration.ItemQueue.FirstOrDefault(item => item.Quantity > 0);
@@ -72,7 +72,7 @@ partial class WorkshopPlugin
             return true;
         }
 
-        if (beginOperations || PendingCraftingOperations)
+        if (beginOperations)
         {
             if (_configuration.CurrentlyCraftedItem != null || NextAutomaticBatch() == null)
             {
@@ -82,7 +82,8 @@ partial class WorkshopPlugin
 
             _configuration.PendingCraftingOperationsFor = _playerState.ContentId;
             _pluginInterface.SavePluginConfig(_configuration);
-            return BeginRetainerTrip(TripReason.BeginOperations);
+            BeginWorkshopTravel();
+            return true;
         }
 
         if (PendingWorkshopStorage)
@@ -124,19 +125,20 @@ partial class WorkshopPlugin
         if (!_configuration.AutomateRetainers)
             return false;
 
-        if (_objectTable.LocalPlayer == null ||
-            (!CanResumeRetainerTrip &&
-             GetDistanceToEventObject(_fabricationStationIds, out _) >= StationApproach.InteractionRange))
+        bool nearStation = GetDistanceToEventObject(_fabricationStationIds, out _) < StationApproach.InteractionRange;
+        bool freshStartOnWorkshopMap = reason == TripReason.BeginOperations && IsOnWorkshopMap();
+        if (_objectTable.LocalPlayer is not { } player ||
+            (!CanResumeRetainerTrip && !nearStation && !freshStartOnWorkshopMap))
         {
             FailCraft("Start retainer automation at the fabrication station.");
             return true;
         }
 
-        if (GetDistanceToEventObject(_fabricationStationIds, out _) < StationApproach.InteractionRange)
+        if (nearStation || freshStartOnWorkshopMap)
         {
             _returnTerritory = _clientState.TerritoryType;
             _returnCharacter = _playerState.ContentId;
-            _stationReturnPosition = _objectTable.LocalPlayer.Position;
+            _stationReturnPosition = player.Position;
         }
 
         _inventoryCyclePending = false;

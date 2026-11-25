@@ -176,6 +176,12 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
             return;
         }
 
+        if (CurrentStage == Stage.TravelToWorkshop)
+        {
+            UpdateWorkshopTravel();
+            return;
+        }
+
         if (!_clientState.IsLoggedIn && CurrentStage is not (Stage.Stopped or Stage.RequestStop))
         {
             _returnTerritory = 0;
@@ -189,16 +195,25 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
             return;
         }
 
+        if (_clientState.IsLoggedIn && CurrentStage == Stage.Stopped && !_retainerTransfer.IsBusy &&
+            (_mainWindow.State == MainWindow.ButtonState.BeginOperations ||
+             (_mainWindow.State == MainWindow.ButtonState.Start && _configuration.AutomateRetainers &&
+              PendingCraftingOperations)))
+        {
+            _mainWindow.State = MainWindow.ButtonState.None;
+            StartAutomaticRun(beginOperations: true);
+            return;
+        }
+
         if (_clientState.IsLoggedIn && WorkshopTerritories.Contains(_clientState.TerritoryType) &&
             !_condition[ConditionFlag.BoundByDuty] && !_condition[ConditionFlag.BetweenAreas] &&
             !_condition[ConditionFlag.BetweenAreas51] && !_retainerTransfer.IsBusy &&
             CurrentStage == Stage.Stopped &&
-            _mainWindow.State is MainWindow.ButtonState.Start or MainWindow.ButtonState.Resume or MainWindow.ButtonState.BeginOperations &&
+            _mainWindow.State is MainWindow.ButtonState.Start or MainWindow.ButtonState.Resume &&
             (CanResumeRetainerTrip || GetDistanceToEventObject(_fabricationStationIds, out _) < StationApproach.InteractionRange))
         {
-            bool beginOperations = _mainWindow.State == MainWindow.ButtonState.BeginOperations;
             _mainWindow.State = MainWindow.ButtonState.None;
-            if (StartAutomaticRun(beginOperations))
+            if (StartAutomaticRun(beginOperations: false))
             {
                 if (CurrentStage == Stage.RetainerTrip && !_externalPluginHandler.Saved)
                     _externalPluginHandler.Save();

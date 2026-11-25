@@ -181,7 +181,8 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
                 bool hasWork = _configuration.AutomateRetainers
                     ? pendingRetainerWork || hasQueuedCrafts
                     : _configuration.RunnableQueue.Any();
-                ImGui.BeginDisabled((!NearFabricationStation && !_plugin.CanResumeRetainerTrip) ||
+                bool canResumeOperations = _configuration.AutomateRetainers && _plugin.PendingCraftingOperations;
+                ImGui.BeginDisabled((!NearFabricationStation && !_plugin.CanResumeRetainerTrip && !canResumeOperations) ||
                                     !hasWork || !IsDiscipleOfHand || _retainerTransfer.IsBusy);
                 if (ImGuiComponents.IconButtonWithText(FontAwesomeIcon.Play,
                         pendingRetainerWork ? "Resume" : "Start Crafting"))
@@ -194,7 +195,7 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
 
                 if (_configuration.AutomateRetainers)
                 {
-                    ImGui.BeginDisabled(!NearFabricationStation || !hasQueuedCrafts || !IsDiscipleOfHand ||
+                    ImGui.BeginDisabled(!_clientState.IsLoggedIn || !hasQueuedCrafts || !IsDiscipleOfHand ||
                                         _retainerTransfer.IsBusy);
                     if (ImGuiComponents.IconButtonWithText(FontAwesomeIcon.Play, "Begin Crafting Operations"))
                     {
@@ -202,7 +203,7 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
                         _checkInventory = false;
                     }
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Deposit submarine parts and other bag items with your assigned retainers, then withdraw materials for a fresh batch.");
+                        ImGui.SetTooltip("Travel to the Company Workshop with Lifestream, then use your assigned retainers to prepare the first batch.");
                     ImGui.EndDisabled();
                 }
 
