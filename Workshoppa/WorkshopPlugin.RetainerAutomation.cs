@@ -32,6 +32,10 @@ partial class WorkshopPlugin
         _configuration.PendingWorkshopStorageFor != 0 &&
         _configuration.PendingWorkshopStorageFor == _playerState.ContentId;
 
+    internal bool PendingCraftingOperations => _configuration.CurrentlyCraftedItem == null &&
+        _configuration.PendingCraftingOperationsFor != 0 &&
+        _configuration.PendingCraftingOperationsFor == _playerState.ContentId;
+
     internal bool CanResumeRetainerTrip => _configuration.AutomateRetainers &&
         _returnTerritory != 0 && _returnTerritory == _clientState.TerritoryType &&
         _returnCharacter == _playerState.ContentId;
@@ -50,10 +54,10 @@ partial class WorkshopPlugin
     private Configuration.QueuedItem? NextAutomaticBatch() =>
         _configuration.ItemQueue.FirstOrDefault(item => item.Quantity > 0);
 
-    private bool StartAutomaticRun()
+    private bool StartAutomaticRun(bool beginOperations)
     {
         if (!_configuration.AutomateRetainers)
-            return false;
+            return beginOperations;
 
         if (string.IsNullOrWhiteSpace(_configuration.MaterialsRetainer) ||
             string.IsNullOrWhiteSpace(_configuration.SubmarinePartsRetainer))
@@ -66,6 +70,19 @@ partial class WorkshopPlugin
         {
             FailCraft("Workshop recipes are still loading. Try starting the queue again.");
             return true;
+        }
+
+        if (beginOperations || PendingCraftingOperations)
+        {
+            if (_configuration.CurrentlyCraftedItem != null || NextAutomaticBatch() == null)
+            {
+                FailCraft("Add a craft to the queue before beginning crafting operations.");
+                return true;
+            }
+
+            _configuration.PendingCraftingOperationsFor = _playerState.ContentId;
+            _pluginInterface.SavePluginConfig(_configuration);
+            return BeginRetainerTrip(TripReason.BeginOperations);
         }
 
         if (PendingWorkshopStorage)
@@ -126,20 +143,26 @@ partial class WorkshopPlugin
         _collection = null;
         _retryTrip = reason;
         _retainerTrip = new RetainerTrip(reason);
-        if (reason is TripReason.MakeRoom or TripReason.StoreBatch or TripReason.PrepareBatch)
+        if (reason is TripReason.MakeRoom or TripReason.StoreBatch or TripReason.PrepareBatch or TripReason.BeginOperations)
             _retainerTrip.Actions.Enqueue(new(_configuration.SubmarinePartsRetainer, RetainerTransfer.TransferKind.DepositSubmarineParts));
 
-        if (reason == TripReason.StoreBatch)
+        if (reason == TripReason.BeginOperations)
+            _retainerTrip.Actions.Enqueue(new(_configuration.MaterialsRetainer, RetainerTransfer.TransferKind.DepositMaterials));
+        else if (reason == TripReason.StoreBatch)
             _retainerTrip.Actions.Enqueue(new(_configuration.MaterialsRetainer, RetainerTransfer.TransferKind.DepositMaterials,
                 DepositItems: _workshopCache.Crafts.SelectMany(craft => craft.Phases).SelectMany(phase => phase.Items)
                     .Select(item => item.ItemId).ToHashSet()));
 
         if (reason == TripReason.ReplenishCraft && _configuration.CurrentlyCraftedItem is { } current)
             AddWithdrawal(_retainerTrip, GetBatchMaterials(current.WorkshopItemId, 1, current));
-        else if (reason is TripReason.StoreBatch or TripReason.PrepareBatch && NextAutomaticBatch() is { } batch)
+        else if (reason is TripReason.StoreBatch or TripReason.PrepareBatch or TripReason.BeginOperations &&
+                 NextAutomaticBatch() is { } batch)
         {
             _retainerTrip.NextBatch = batch;
-            AddWithdrawal(_retainerTrip, GetBatchMaterials(batch.WorkshopItemId, batch.AutomaticBatchQuantity));
+            _retainerTrip.NextBatchQuantity = reason == TripReason.BeginOperations
+                ? Math.Min(batch.Quantity, Configuration.AutomaticBatchLimit)
+                : batch.AutomaticBatchQuantity;
+            AddWithdrawal(_retainerTrip, GetBatchMaterials(batch.WorkshopItemId, _retainerTrip.NextBatchQuantity));
         }
 
         SetCraftTimerActive(false);
@@ -408,9 +431,11 @@ partial class WorkshopPlugin
         }
 
         if (trip.NextBatch is { } nextBatch)
-            ActivateAutomaticBatch(nextBatch, nextBatch.AutomaticBatchQuantity);
-        if (trip.Reason == TripReason.StoreBatch)
+            ActivateAutomaticBatch(nextBatch, trip.NextBatchQuantity);
+        if (trip.Reason is TripReason.StoreBatch or TripReason.BeginOperations && PendingWorkshopStorage)
             _configuration.PendingWorkshopStorageFor = 0;
+        if (trip.Reason == TripReason.BeginOperations)
+            _configuration.PendingCraftingOperationsFor = 0;
 
         EndRetainerTrip();
         _retryTrip = null;
@@ -510,7 +535,7 @@ partial class WorkshopPlugin
         return false;
     }
 
-    private enum TripReason { PrepareBatch, MakeRoom, StoreBatch, ReplenishCraft }
+    private enum TripReason { PrepareBatch, MakeRoom, StoreBatch, ReplenishCraft, BeginOperations }
     private enum TripStep { ClearStation, FindBell, OpenBell, SelectRetainer, OpenInventory, StartTransfer, Transfer, LeaveRetainer, CloseBell, Return }
 
     private sealed record RetainerAction(string Retainer, RetainerTransfer.TransferKind Kind,
@@ -529,6 +554,7 @@ partial class WorkshopPlugin
         };
         public Queue<RetainerAction> Actions { get; } = new();
         public Configuration.QueuedItem? NextBatch { get; set; }
+        public int NextBatchQuantity { get; set; }
         public ulong RetainerId { get; set; }
         public Vector3[]? StationApproaches { get; set; }
         public int StationApproachIndex { get; set; }

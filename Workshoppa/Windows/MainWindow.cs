@@ -175,19 +175,36 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
             ImGui.SameLine();
             if (_plugin.CurrentStage == Stage.Stopped)
             {
+                bool hasQueuedCrafts = _configuration.ItemQueue.Any(item => item.Quantity > 0);
+                bool pendingRetainerWork = _configuration.AutomateRetainers &&
+                    (_plugin.PendingWorkshopStorage || _plugin.PendingCraftingOperations);
                 bool hasWork = _configuration.AutomateRetainers
-                    ? _plugin.PendingWorkshopStorage || _configuration.ItemQueue.Any(item => item.Quantity > 0)
+                    ? pendingRetainerWork || hasQueuedCrafts
                     : _configuration.RunnableQueue.Any();
                 ImGui.BeginDisabled((!NearFabricationStation && !_plugin.CanResumeRetainerTrip) ||
                                     !hasWork || !IsDiscipleOfHand || _retainerTransfer.IsBusy);
                 if (ImGuiComponents.IconButtonWithText(FontAwesomeIcon.Play,
-                        _configuration.AutomateRetainers && _plugin.PendingWorkshopStorage ? "Resume" : "Start Crafting"))
+                        pendingRetainerWork ? "Resume" : "Start Crafting"))
                 {
                     State = ButtonState.Start;
                     _checkInventory = false;
                 }
 
                 ImGui.EndDisabled();
+
+                if (_configuration.AutomateRetainers)
+                {
+                    ImGui.BeginDisabled(!NearFabricationStation || !hasQueuedCrafts || !IsDiscipleOfHand ||
+                                        _retainerTransfer.IsBusy);
+                    if (ImGuiComponents.IconButtonWithText(FontAwesomeIcon.Play, "Begin Crafting Operations"))
+                    {
+                        State = ButtonState.BeginOperations;
+                        _checkInventory = false;
+                    }
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Deposit submarine parts and other bag items with your assigned retainers, then withdraw materials for a fresh batch.");
+                    ImGui.EndDisabled();
+                }
 
                 ShowErrorConditions();
             }
@@ -807,6 +824,7 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
     {
         None,
         Start,
+        BeginOperations,
         Resume,
         Pause,
         Stop,

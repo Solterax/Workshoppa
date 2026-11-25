@@ -24,6 +24,7 @@ internal sealed class Configuration : IPluginConfiguration
     public string MaterialsRetainer { get; set; } = string.Empty;
     public string SubmarinePartsRetainer { get; set; } = string.Empty;
     public ulong PendingWorkshopStorageFor { get; set; }
+    public ulong PendingCraftingOperationsFor { get; set; }
     public List<Preset> Presets { get; set; } = new();
     public Dictionary<uint, CraftTimingStats> CraftTimes { get; set; } = new();
 

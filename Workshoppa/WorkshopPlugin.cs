@@ -193,11 +193,12 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
             !_condition[ConditionFlag.BoundByDuty] && !_condition[ConditionFlag.BetweenAreas] &&
             !_condition[ConditionFlag.BetweenAreas51] && !_retainerTransfer.IsBusy &&
             CurrentStage == Stage.Stopped &&
-            _mainWindow.State is MainWindow.ButtonState.Start or MainWindow.ButtonState.Resume &&
+            _mainWindow.State is MainWindow.ButtonState.Start or MainWindow.ButtonState.Resume or MainWindow.ButtonState.BeginOperations &&
             (CanResumeRetainerTrip || GetDistanceToEventObject(_fabricationStationIds, out _) < StationApproach.InteractionRange))
         {
+            bool beginOperations = _mainWindow.State == MainWindow.ButtonState.BeginOperations;
             _mainWindow.State = MainWindow.ButtonState.None;
-            if (StartAutomaticRun())
+            if (StartAutomaticRun(beginOperations))
             {
                 if (CurrentStage == Stage.RetainerTrip && !_externalPluginHandler.Saved)
                     _externalPluginHandler.Save();
