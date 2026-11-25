@@ -23,6 +23,8 @@ internal sealed class Configuration : IPluginConfiguration
     public bool AutomateRetainers { get; set; }
     public string MaterialsRetainer { get; set; } = string.Empty;
     public string SubmarinePartsRetainer { get; set; } = string.Empty;
+    internal string[] MaterialRetainerNames => ReadRetainerNames(MaterialsRetainer);
+    internal string[] SubmarinePartRetainerNames => ReadRetainerNames(SubmarinePartsRetainer);
     public ulong PendingWorkshopStorageFor { get; set; }
     public ulong PendingCraftingOperationsFor { get; set; }
     public List<Preset> Presets { get; set; } = new();
@@ -30,6 +32,10 @@ internal sealed class Configuration : IPluginConfiguration
 
     public WindowConfig MainWindowConfig { get; } = new();
     public WindowConfig ConfigWindowConfig { get; } = new();
+
+    private static string[] ReadRetainerNames(string? names) =>
+        names?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray() ?? [];
 
     internal uint? TakeNextQueuedItem()
     {

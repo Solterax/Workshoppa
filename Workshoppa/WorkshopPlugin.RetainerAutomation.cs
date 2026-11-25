@@ -59,10 +59,9 @@ partial class WorkshopPlugin
         if (!_configuration.AutomateRetainers)
             return beginOperations;
 
-        if (string.IsNullOrWhiteSpace(_configuration.MaterialsRetainer) ||
-            string.IsNullOrWhiteSpace(_configuration.SubmarinePartsRetainer))
+        if (_configuration.MaterialRetainerNames.Length == 0 || _configuration.SubmarinePartRetainerNames.Length == 0)
         {
-            FailCraft("Set both retainer names in Workshoppa configuration before starting automation.");
+            FailCraft("Set at least one retainer for materials and one for submarine parts before starting automation.");
             return true;
         }
 
@@ -145,18 +144,21 @@ partial class WorkshopPlugin
         _collection = null;
         _retryTrip = reason;
         _retainerTrip = new RetainerTrip(reason);
+        var materialsRetainers = _configuration.MaterialRetainerNames;
         if (reason is TripReason.MakeRoom or TripReason.StoreBatch or TripReason.PrepareBatch or TripReason.BeginOperations)
-            _retainerTrip.Actions.Enqueue(new(_configuration.SubmarinePartsRetainer, RetainerTransfer.TransferKind.DepositSubmarineParts));
+            AddRetainerActions(_retainerTrip, _configuration.SubmarinePartRetainerNames,
+                RetainerTransfer.TransferKind.DepositSubmarineParts);
 
         if (reason == TripReason.BeginOperations)
-            _retainerTrip.Actions.Enqueue(new(_configuration.MaterialsRetainer, RetainerTransfer.TransferKind.DepositMaterials));
+            AddRetainerActions(_retainerTrip, materialsRetainers, RetainerTransfer.TransferKind.DepositMaterials);
         else if (reason == TripReason.StoreBatch)
-            _retainerTrip.Actions.Enqueue(new(_configuration.MaterialsRetainer, RetainerTransfer.TransferKind.DepositMaterials,
-                DepositItems: _workshopCache.Crafts.SelectMany(craft => craft.Phases).SelectMany(phase => phase.Items)
-                    .Select(item => item.ItemId).ToHashSet()));
+            AddRetainerActions(_retainerTrip, materialsRetainers, RetainerTransfer.TransferKind.DepositMaterials,
+                depositItems: _workshopCache.Crafts.SelectMany(craft => craft.Phases).SelectMany(phase => phase.Items)
+                    .Select(item => item.ItemId).ToHashSet());
 
         if (reason == TripReason.ReplenishCraft && _configuration.CurrentlyCraftedItem is { } current)
-            AddWithdrawal(_retainerTrip, GetBatchMaterials(current.WorkshopItemId, 1, current));
+            AddRetainerActions(_retainerTrip, materialsRetainers, RetainerTransfer.TransferKind.WithdrawMaterials,
+                GetBatchMaterials(current.WorkshopItemId, 1, current));
         else if (reason is TripReason.StoreBatch or TripReason.PrepareBatch or TripReason.BeginOperations &&
                  NextAutomaticBatch() is { } batch)
         {
@@ -164,7 +166,8 @@ partial class WorkshopPlugin
             _retainerTrip.NextBatchQuantity = reason == TripReason.BeginOperations
                 ? Math.Min(batch.Quantity, Configuration.AutomaticBatchLimit)
                 : batch.AutomaticBatchQuantity;
-            AddWithdrawal(_retainerTrip, GetBatchMaterials(batch.WorkshopItemId, _retainerTrip.NextBatchQuantity));
+            AddRetainerActions(_retainerTrip, materialsRetainers, RetainerTransfer.TransferKind.WithdrawMaterials,
+                GetBatchMaterials(batch.WorkshopItemId, _retainerTrip.NextBatchQuantity));
         }
 
         SetCraftTimerActive(false);
@@ -172,8 +175,13 @@ partial class WorkshopPlugin
         return true;
     }
 
-    private void AddWithdrawal(RetainerTrip trip, IReadOnlyList<Ingredient> materials) =>
-        trip.Actions.Enqueue(new(_configuration.MaterialsRetainer, RetainerTransfer.TransferKind.WithdrawMaterials, materials));
+    private static void AddRetainerActions(RetainerTrip trip, IEnumerable<string> retainers,
+        RetainerTransfer.TransferKind kind, IReadOnlyList<Ingredient>? materials = null,
+        IReadOnlySet<uint>? depositItems = null)
+    {
+        foreach (string retainer in retainers)
+            trip.Actions.Enqueue(new(retainer, kind, materials, depositItems));
+    }
 
     private void ActivateAutomaticBatch(Configuration.QueuedItem batch, int quantity)
     {
@@ -291,7 +299,7 @@ partial class WorkshopPlugin
                     trip.GoTo(TripStep.OpenInventory);
                 }
                 else if (hasEntries)
-                    FailCraft($"Retainer \"{name}\" is unavailable. Check the name and venture status, then resume.");
+                    SkipUnavailableRetainer(trip);
                 break;
             case TripStep.OpenInventory:
                 if (_condition[ConditionFlag.OccupiedSummoningBell] &&
@@ -400,17 +408,14 @@ partial class WorkshopPlugin
                 return;
             }
 
-            _pluginLog.Information($"{action.Retainer} has no room for the remaining items. Leaving them in your inventory.");
+            _pluginLog.Information($"{action.Retainer} has no room for the remaining items.");
         }
 
-        if (action.Materials?.FirstOrDefault(item => !HasMaterial(item)) is { } missing)
-        {
-            int deficit = missing.TotalQuantity - RetainerTransfer.CountInInventory(missing.ItemId);
-            FailCraft($"Still need {deficit}× {missing.Name}. Check {action.Retainer}'s stock and your inventory space.");
-            return;
-        }
-
+        trip.LastCompletedTransferKind = action.Kind;
         trip.Actions.Dequeue();
+        if (!CheckWithdrawalAfterLastRetainer(trip, action))
+            return;
+
         SkipUnneededTransfers(trip);
         if (trip.Actions.TryPeek(out var next) && SameRetainerName(next.Retainer, action.Retainer))
         {
@@ -423,6 +428,44 @@ partial class WorkshopPlugin
             agent->Hide();
         trip.GoTo(TripStep.LeaveRetainer);
     }
+
+    private void SkipUnavailableRetainer(RetainerTrip trip)
+    {
+        var action = trip.Actions.Dequeue();
+        _pluginLog.Information($"Retainer \"{action.Retainer}\" is unavailable.");
+        if (!HasNextRetainerFor(trip, action) && trip.LastCompletedTransferKind != action.Kind)
+        {
+            FailCraft($"No configured retainer was available for {RetainerActionDescription(action.Kind)}. Check the names and resume.");
+            return;
+        }
+
+        if (!CheckWithdrawalAfterLastRetainer(trip, action))
+            return;
+
+        SkipUnneededTransfers(trip);
+        trip.GoTo(trip.Actions.Count == 0 ? TripStep.CloseBell : TripStep.SelectRetainer);
+    }
+
+    private bool CheckWithdrawalAfterLastRetainer(RetainerTrip trip, RetainerAction action)
+    {
+        if (HasNextRetainerFor(trip, action) ||
+            action.Materials?.FirstOrDefault(item => !HasMaterial(item)) is not { } missing)
+            return true;
+
+        int deficit = missing.TotalQuantity - RetainerTransfer.CountInInventory(missing.ItemId);
+        FailCraft($"Still need {deficit}× {missing.Name}. Check your materials retainers' stock and your inventory space.");
+        return false;
+    }
+
+    private static bool HasNextRetainerFor(RetainerTrip trip, RetainerAction action) =>
+        trip.Actions.TryPeek(out var next) && next.Kind == action.Kind;
+
+    private static string RetainerActionDescription(RetainerTransfer.TransferKind kind) => kind switch
+    {
+        RetainerTransfer.TransferKind.DepositSubmarineParts => "storing submarine parts",
+        RetainerTransfer.TransferKind.DepositMaterials => "storing materials",
+        _ => "withdrawing materials",
+    };
 
     private void FinishRetainerTrip(RetainerTrip trip)
     {
@@ -555,6 +598,7 @@ partial class WorkshopPlugin
             _ => TimeSpan.FromSeconds(15),
         };
         public Queue<RetainerAction> Actions { get; } = new();
+        public RetainerTransfer.TransferKind? LastCompletedTransferKind { get; set; }
         public Configuration.QueuedItem? NextBatch { get; set; }
         public int NextBatchQuantity { get; set; }
         public ulong RetainerId { get; set; }

@@ -89,17 +89,17 @@ internal sealed class ConfigWindow : LWindow, IPersistableWindowConfig
         {
             string materials = _configuration.MaterialsRetainer ?? string.Empty;
             string parts = _configuration.SubmarinePartsRetainer ?? string.Empty;
-            if (ImGui.InputText("Materials retainer", ref materials, 64))
+            if (ImGui.InputText("Materials retainers", ref materials, 512))
             {
                 _configuration.MaterialsRetainer = materials;
                 _pluginInterface.SavePluginConfig(_configuration);
             }
-            if (ImGui.InputText("Submarine parts retainer", ref parts, 64))
+            if (ImGui.InputText("Submarine parts retainers", ref parts, 512))
             {
                 _configuration.SubmarinePartsRetainer = parts;
                 _pluginInterface.SavePluginConfig(_configuration);
             }
-            ImGui.TextWrapped($"Enter the names shown at the summoning bell. Uses vnavmesh to walk to the bell. Processes queue rows in order, up to {Configuration.AutomaticBatchLimit} crafts per batch.");
+            ImGui.TextWrapped($"Enter retainer names separated by commas, highest priority first. Uses vnavmesh to walk to the bell. Processes up to {Configuration.AutomaticBatchLimit} crafts per batch.");
         }
         ImGui.EndDisabled();
     }
