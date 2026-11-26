@@ -547,6 +547,26 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
                 _chatGui.Print("Copied queue content to clipboard.");
             }
 
+            ImGui.EndDisabled();
+
+            ImGui.BeginDisabled(_configuration.CurrentlyCraftedItem == null && !_configuration.RunnableQueue.Any());
+            if (ImGui.MenuItem("Export Final Material List"))
+            {
+                var text = string.Join(Environment.NewLine, GetMaterialList()
+                    .Where(item => item.TotalQuantity > 0)
+                    .Select(item => $"{item.TotalQuantity}x {item.Name}"));
+                if (text.Length > 0)
+                {
+                    ImGui.SetClipboardText(text);
+                    _chatGui.Print("Copied final material list to clipboard.");
+                }
+                else
+                    _chatGui.Print("No remaining workshop materials to export.");
+            }
+
+            ImGui.EndDisabled();
+
+            ImGui.BeginDisabled(_configuration.ItemQueue.Count == 0);
             if (ImGui.MenuItem("Export Material List to Clipboard"))
             {
                 var toClipboardItems = _recipeTree.ResolveRecipes(GetMaterialList()).Where(x => x.Type == Ingredient.EType.Craftable);
