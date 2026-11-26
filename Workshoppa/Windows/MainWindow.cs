@@ -214,7 +214,9 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
                 State = ButtonState.Pause;
         }
 
-        if (_plugin.RetainerTripStatus is { } tripStatus)
+        if (_plugin.WaitingForWorkshopVisitors)
+            ImGui.TextWrapped("Paused while another player is in the workshop.");
+        else if (_plugin.RetainerTripStatus is { } tripStatus)
             ImGui.TextWrapped(tripStatus);
         else
             DrawRetainerTransfers();

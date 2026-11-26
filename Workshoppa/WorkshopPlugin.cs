@@ -147,12 +147,24 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
     private void FrameworkUpdate(IFramework framework)
     {
         _queueNotification.Update();
-        if (_retainerTrip != null && _mainWindow.State is MainWindow.ButtonState.Pause or MainWindow.ButtonState.Stop)
-            StopCraft();
-        _retainerTransfer.Update();
 
         try
         {
+            if (CurrentStage != Stage.WaitForCollectedProduct &&
+                _mainWindow.State is MainWindow.ButtonState.Pause or MainWindow.ButtonState.Stop)
+                StopCraft();
+
+            if (PauseForWorkshopVisitors())
+            {
+                if (CurrentStage == Stage.WaitForCollectedProduct)
+                    CheckCollectedProduct(waitingForVisitors: true);
+                return;
+            }
+
+            _retainerTransfer.Update();
+            if (ReplayDeferredWorkshopDialog())
+                return;
+
             UpdateCraft();
         }
         catch (Exception exception) when (CurrentStage is not (Stage.Stopped or Stage.RequestStop))
@@ -167,12 +179,6 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
         if (CurrentStage == Stage.WaitForCollectedProduct)
         {
             CheckCollectedProduct();
-            return;
-        }
-
-        if (_mainWindow.State is MainWindow.ButtonState.Pause or MainWindow.ButtonState.Stop)
-        {
-            StopCraft();
             return;
         }
 
@@ -225,6 +231,8 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
             else
                 CurrentStage = Stage.TakeItemFromQueue;
             ResetCraftProgress();
+            if (PauseForWorkshopVisitors())
+                return;
         }
 
         if (!_clientState.IsLoggedIn ||

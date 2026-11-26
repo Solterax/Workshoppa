@@ -82,6 +82,12 @@ internal sealed unsafe class RetainerTransfer(IGameGui gameGui, ICondition condi
 
     public void Stop() => _stopRequested = true;
 
+    public void RefreshMoveTimeout()
+    {
+        if (_pending is { } move)
+            _pending = move with { Started = Stopwatch.GetTimestamp() };
+    }
+
     public void Update()
     {
         if (!IsBusy)

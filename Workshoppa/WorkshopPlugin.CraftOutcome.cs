@@ -69,7 +69,7 @@ partial class WorkshopPlugin
         return true;
     }
 
-    private void CheckCollectedProduct()
+    private void CheckCollectedProduct(bool waitingForVisitors = false)
     {
         if (!_clientState.IsLoggedIn)
         {
@@ -88,7 +88,7 @@ partial class WorkshopPlugin
             _collection = null;
             ConfirmCollectProductFollowUp();
         }
-        else if (Stopwatch.GetElapsedTime(collection.StartedAt) >= CollectionTimeout)
+        else if (!waitingForVisitors && Stopwatch.GetElapsedTime(collection.StartedAt) >= CollectionTimeout)
         {
             bool hasRoom = HasRoomForProduct(collection.Craft);
             if (!hasRoom && BeginRetainerTrip(TripReason.MakeRoom))
@@ -141,6 +141,9 @@ partial class WorkshopPlugin
         bool wasActive = CurrentStage != Stage.Stopped;
         EndRetainerTrip();
         _mainWindow.State = MainWindow.ButtonState.None;
+        WaitingForWorkshopVisitors = false;
+        _workshopEmptySince = null;
+        _deferredWorkshopDialog = null;
         _collection = null;
         _continueAt = DateTime.MinValue;
         CurrentStage = Stage.Stopped;

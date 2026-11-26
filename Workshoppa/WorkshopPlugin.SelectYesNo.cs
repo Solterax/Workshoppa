@@ -46,36 +46,46 @@ partial class WorkshopPlugin
                 _pluginLog.Verbose("Not a purchase confirmation match");
             }
         }
-        else if (CurrentStage != Stage.Stopped)
+        else
+            HandleWorkshopConfirmation(addonSelectYesNo, text);
+    }
+
+    private unsafe void HandleWorkshopConfirmation(AddonSelectYesno* addonSelectYesNo, string text)
+    {
+        if (CurrentStage == Stage.ConfirmMaterialDelivery && _gameStrings.TurnInHighQualityItem == text)
         {
-            if (CurrentStage == Stage.ConfirmMaterialDelivery && _gameStrings.TurnInHighQualityItem == text)
-            {
-                _pluginLog.Information($"Selecting 'yes' ({text})");
-                addonSelectYesNo->AtkUnitBase.FireCallbackInt(0);
-            }
-            else if (CurrentStage == Stage.ConfirmMaterialDelivery && _gameStrings.ContributeItems.IsMatch(text))
-            {
-                _pluginLog.Information($"Selecting 'yes' ({text})");
-                addonSelectYesNo->AtkUnitBase.FireCallbackInt(0);
+            if (DeferWorkshopDialogForVisitor())
+                return;
+            _pluginLog.Information($"Selecting 'yes' ({text})");
+            addonSelectYesNo->AtkUnitBase.FireCallbackInt(0);
+        }
+        else if (CurrentStage == Stage.ConfirmMaterialDelivery && _gameStrings.ContributeItems.IsMatch(text))
+        {
+            if (DeferWorkshopDialogForVisitor())
+                return;
+            _pluginLog.Information($"Selecting 'yes' ({text})");
+            addonSelectYesNo->AtkUnitBase.FireCallbackInt(0);
 
-                ConfirmMaterialDeliveryFollowUp();
-            }
-            else if (CurrentStage == Stage.ConfirmCollectProduct && _gameStrings.RetrieveFinishedItem.IsMatch(text))
-            {
-                var current = _configuration.CurrentlyCraftedItem;
-                var craft = _workshopCache.Crafts.FirstOrDefault(x => x.WorkshopItemId == current?.WorkshopItemId);
-                if (craft == null || craft.ResultItem == 0)
-                {
-                    FailCraft("Workshoppa could not identify the finished product.");
-                    return;
-                }
+            ConfirmMaterialDeliveryFollowUp();
+        }
+        else if (CurrentStage == Stage.ConfirmCollectProduct && _gameStrings.RetrieveFinishedItem.IsMatch(text))
+        {
+            if (DeferWorkshopDialogForVisitor())
+                return;
 
-                _collection = new ProductCollection(craft, RetainerTransfer.CountInInventory(craft.ResultItem),
-                    System.Diagnostics.Stopwatch.GetTimestamp());
-                CurrentStage = Stage.WaitForCollectedProduct;
-                _pluginLog.Information($"Selecting 'yes' ({text})");
-                addonSelectYesNo->AtkUnitBase.FireCallbackInt(0);
+            var current = _configuration.CurrentlyCraftedItem;
+            var craft = _workshopCache.Crafts.FirstOrDefault(x => x.WorkshopItemId == current?.WorkshopItemId);
+            if (craft == null || craft.ResultItem == 0)
+            {
+                FailCraft("Workshoppa could not identify the finished product.");
+                return;
             }
+
+            _collection = new ProductCollection(craft, RetainerTransfer.CountInInventory(craft.ResultItem),
+                System.Diagnostics.Stopwatch.GetTimestamp());
+            CurrentStage = Stage.WaitForCollectedProduct;
+            _pluginLog.Information($"Selecting 'yes' ({text})");
+            addonSelectYesNo->AtkUnitBase.FireCallbackInt(0);
         }
     }
 

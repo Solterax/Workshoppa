@@ -142,9 +142,14 @@ partial class WorkshopPlugin
         if (CurrentStage != Stage.OpenRequestItemWindow)
             return;
 
-        if (addonRequest->EntryCount != 1)
+        if (addonRequest->EntryCount != 1 || DeferWorkshopDialogForVisitor())
             return;
 
+        OpenRequestItemSelection(addonRequest);
+    }
+
+    private unsafe void OpenRequestItemSelection(AddonRequest* addonRequest)
+    {
         _fallbackAt = DateTime.MaxValue;
         CurrentStage = Stage.OpenRequestItemSelect;
         var contributeMaterial = stackalloc AtkValue[]
@@ -159,9 +164,14 @@ partial class WorkshopPlugin
 
     private unsafe void ContextIconMenuPostReceiveEvent(AddonEvent type, AddonArgs addon)
     {
-        if (CurrentStage != Stage.OpenRequestItemSelect)
+        if (CurrentStage != Stage.OpenRequestItemSelect || DeferWorkshopDialogForVisitor())
             return;
 
+        SelectRequestedItem((AddonContextIconMenu*)addon.Addon.Address);
+    }
+
+    private unsafe void SelectRequestedItem(AddonContextIconMenu* menu)
+    {
         CurrentStage = Stage.ConfirmRequestItemWindow;
         var selectSlot = stackalloc AtkValue[]
         {
@@ -171,7 +181,7 @@ partial class WorkshopPlugin
             new() { Type = ValueType.UInt, UInt = 0 },
             new() { Type = 0, Int = 0 },
         };
-        ((AddonContextIconMenu*)addon.Addon.Address)->AtkUnitBase.FireCallback(5, selectSlot);
+        menu->AtkUnitBase.FireCallback(5, selectSlot);
     }
 
     private unsafe void RequestPostRefresh(AddonEvent type, AddonArgs addon)
@@ -181,9 +191,14 @@ partial class WorkshopPlugin
             return;
 
         var addonRequest = (AddonRequest*)addon.Addon.Address;
-        if (addonRequest->EntryCount != 1)
+        if (addonRequest->EntryCount != 1 || DeferWorkshopDialogForVisitor())
             return;
 
+        ConfirmRequestItem(addonRequest);
+    }
+
+    private unsafe void ConfirmRequestItem(AddonRequest* addonRequest)
+    {
         CurrentStage = Stage.ConfirmMaterialDelivery;
         var closeWindow = stackalloc AtkValue[]
         {
