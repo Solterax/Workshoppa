@@ -39,6 +39,7 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
 
     private readonly Configuration _configuration;
     private readonly CraftTiming _craftTiming;
+    private readonly RetainerTravelTiming _retainerTravelTiming;
     private readonly QueueCompletionNotification _queueNotification;
     private readonly ExternalPluginHandler _externalPluginHandler;
     private readonly RetainerTransfer _retainerTransfer;
@@ -77,6 +78,7 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
         _workshopNavigation = new WorkshopNavigation(pluginInterface);
         _configuration = (Configuration?)_pluginInterface.GetPluginConfig() ?? new Configuration();
         _craftTiming = new CraftTiming(_configuration);
+        _retainerTravelTiming = new RetainerTravelTiming(_configuration);
         _queueNotification = new QueueCompletionNotification(_configuration, _pluginLog,
             new NotificationMasterIpc(_pluginInterface, _pluginLog));
         if (_craftTiming.DiscardInterruptedSample())

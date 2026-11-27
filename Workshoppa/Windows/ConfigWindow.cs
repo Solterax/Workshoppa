@@ -87,6 +87,13 @@ internal sealed class ConfigWindow : LWindow, IPersistableWindowConfig
         }
         if (automatic)
         {
+            int batchSize = _configuration.CraftBatchSize;
+            ImGui.SetNextItemWidth(115);
+            if (ImGui.InputInt("Crafts per batch", ref batchSize))
+            {
+                _configuration.AutomaticBatchSize = Math.Clamp(batchSize, 1, Configuration.MaximumAutomaticBatchSize);
+                _pluginInterface.SavePluginConfig(_configuration);
+            }
             string materials = _configuration.MaterialsRetainer ?? string.Empty;
             string parts = _configuration.SubmarinePartsRetainer ?? string.Empty;
             if (ImGui.InputText("Materials retainers", ref materials, 512))
@@ -99,7 +106,7 @@ internal sealed class ConfigWindow : LWindow, IPersistableWindowConfig
                 _configuration.SubmarinePartsRetainer = parts;
                 _pluginInterface.SavePluginConfig(_configuration);
             }
-            ImGui.TextWrapped($"Enter retainer names separated by commas, highest priority first. Uses vnavmesh to walk to the bell. Processes up to {Configuration.AutomaticBatchLimit} crafts per batch.");
+            ImGui.TextWrapped("Enter retainer names separated by commas, highest priority first. Uses vnavmesh to walk to the bell.");
         }
         ImGui.EndDisabled();
     }

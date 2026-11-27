@@ -41,6 +41,7 @@ partial class WorkshopPlugin
             {
                 WaitingForWorkshopVisitors = true;
                 SetCraftTimerActive(false);
+                _retainerTravelTiming.Suspend();
                 _workshopNavigation.Stop();
                 _pluginLog.Information("Workshop crafting paused while another player is present.");
             }

@@ -9,7 +9,8 @@ namespace Workshoppa;
 
 internal sealed class Configuration : IPluginConfiguration
 {
-    internal const int AutomaticBatchLimit = 20;
+    internal const int DefaultAutomaticBatchSize = 20;
+    internal const int MaximumAutomaticBatchSize = 99999;
 
     public int Version { get; set; } = 1;
 
@@ -21,6 +22,7 @@ internal sealed class Configuration : IPluginConfiguration
     public bool NotifyOnQueueCompletionInBackground { get; set; }
     public bool UseWorkshoppaDesktopPopup { get; set; }
     public bool AutomateRetainers { get; set; }
+    public int AutomaticBatchSize { get; set; } = DefaultAutomaticBatchSize;
     public string MaterialsRetainer { get; set; } = string.Empty;
     public string SubmarinePartsRetainer { get; set; } = string.Empty;
     internal string[] MaterialRetainerNames => ReadRetainerNames(MaterialsRetainer);
@@ -29,6 +31,8 @@ internal sealed class Configuration : IPluginConfiguration
     public ulong PendingCraftingOperationsFor { get; set; }
     public List<Preset> Presets { get; set; } = new();
     public Dictionary<uint, CraftTimingStats> CraftTimes { get; set; } = new();
+    public TravelTimingStats ToRetainerTravel { get; set; } = new();
+    public TravelTimingStats FromRetainerTravel { get; set; } = new();
 
     public WindowConfig MainWindowConfig { get; } = new();
     public WindowConfig ConfigWindowConfig { get; } = new();
@@ -75,6 +79,39 @@ internal sealed class Configuration : IPluginConfiguration
         return remaining <= 0;
     }
 
+    internal int CraftBatchSize => Math.Clamp(AutomaticBatchSize, 1, MaximumAutomaticBatchSize);
+
+    internal int GetAutomaticBatchQuantity(QueuedItem row) =>
+        Math.Min(row.Quantity, row.AutomaticBatchRemaining ?? CraftBatchSize);
+
+    internal long CountPlannedStorageTrips()
+    {
+        var current = CurrentlyCraftedItem;
+        var legacyCurrentRow = current is { QueueBatchId: null } ? RunnableQueue.FirstOrDefault() : null;
+        long trips = current == null ? 0 : 1;
+        int batchSize = CraftBatchSize;
+        foreach (var row in ItemQueue)
+        {
+            int remaining = row.Quantity;
+            if (remaining <= 0)
+                continue;
+
+            bool sharesCurrentBatch = row.IsRunnable && current != null &&
+                (current.QueueBatchId is { } id ? row.BatchId == id
+                    : ReferenceEquals(row, legacyCurrentRow) && row.WorkshopItemId == current.WorkshopItemId);
+            if (sharesCurrentBatch)
+                remaining -= Math.Min(remaining, Math.Max(0, (row.AutomaticBatchRemaining ?? batchSize) - 1));
+            else if (current == null && row.IsRunnable && row.AutomaticBatchRemaining is > 0)
+            {
+                remaining -= GetAutomaticBatchQuantity(row);
+                trips++;
+            }
+
+            trips += ((long)remaining + batchSize - 1) / batchSize;
+        }
+        return trips;
+    }
+
     internal sealed class QueuedItem
     {
         public Guid? BatchId { get; set; }
@@ -83,7 +120,6 @@ internal sealed class Configuration : IPluginConfiguration
         public int Quantity { get; set; }
         public bool IsPaused { get; set; }
         internal bool IsRunnable => !IsPaused && Quantity > 0;
-        internal int AutomaticBatchQuantity => Math.Min(Quantity, AutomaticBatchRemaining ?? AutomaticBatchLimit);
     }
 
     internal sealed class CurrentItem
@@ -144,6 +180,15 @@ internal sealed class Configuration : IPluginConfiguration
         public long CompletedCrafts { get; set; }
         public double TotalActiveSeconds { get; set; }
         public double GetAverageSeconds() => TotalActiveSeconds / CompletedCrafts;
+    }
+
+    internal sealed class TravelTimingStats
+    {
+        public long Trips { get; set; }
+        public double TotalSeconds { get; set; }
+        internal double? AverageSeconds => Trips > 0 && double.IsFinite(TotalSeconds) && TotalSeconds > 0
+            ? TotalSeconds / Trips
+            : null;
     }
 
     internal sealed class PhaseItem

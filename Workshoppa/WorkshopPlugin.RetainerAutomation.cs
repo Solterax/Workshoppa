@@ -103,7 +103,7 @@ partial class WorkshopPlugin
             {
                 row.BatchId ??= Guid.NewGuid();
                 current.QueueBatchId = row.BatchId;
-                int remaining = row.AutomaticBatchRemaining ?? Configuration.AutomaticBatchLimit;
+                int remaining = row.AutomaticBatchRemaining ?? _configuration.CraftBatchSize;
                 ActivateAutomaticBatch(row, (int)Math.Min(row.Quantity + 1L, remaining));
                 _pluginInterface.SavePluginConfig(_configuration);
             }
@@ -113,10 +113,11 @@ partial class WorkshopPlugin
         var batch = NextAutomaticBatch();
         if (batch == null)
             return false;
-        if (!GetBatchMaterials(batch.WorkshopItemId, batch.AutomaticBatchQuantity).All(HasMaterial))
+        int quantity = _configuration.GetAutomaticBatchQuantity(batch);
+        if (!GetBatchMaterials(batch.WorkshopItemId, quantity).All(HasMaterial))
             return BeginRetainerTrip(TripReason.PrepareBatch);
 
-        ActivateAutomaticBatch(batch, batch.AutomaticBatchQuantity);
+        ActivateAutomaticBatch(batch, quantity);
         _pluginInterface.SavePluginConfig(_configuration);
         return false;
     }
@@ -166,8 +167,8 @@ partial class WorkshopPlugin
         {
             _retainerTrip.NextBatch = batch;
             _retainerTrip.NextBatchQuantity = reason == TripReason.BeginOperations
-                ? Math.Min(batch.Quantity, Configuration.AutomaticBatchLimit)
-                : batch.AutomaticBatchQuantity;
+                ? Math.Min(batch.Quantity, _configuration.CraftBatchSize)
+                : _configuration.GetAutomaticBatchQuantity(batch);
             AddRetainerActions(_retainerTrip, materialsRetainers, RetainerTransfer.TransferKind.WithdrawMaterials,
                 GetBatchMaterials(batch.WorkshopItemId, _retainerTrip.NextBatchQuantity));
         }
@@ -286,10 +287,16 @@ partial class WorkshopPlugin
                 if (Vector3.Distance(player.Position, bell.Position) <= 2.7f)
                 {
                     _workshopNavigation.Stop();
+                    trip.ReachedBell = true;
+                    RecordRetainerTravel(RetainerTravelTiming.Direction.ToBell);
                     trip.GoTo(TripStep.OpenBell);
                 }
-                else if (_workshopNavigation.Update(player.Position, bell.Position, out _) is { } bellError)
-                    FailCraft(bellError);
+                else
+                {
+                    _retainerTravelTiming.Start(RetainerTravelTiming.Direction.ToBell);
+                    if (_workshopNavigation.Update(player.Position, bell.Position, out _) is { } bellError)
+                        FailCraft(bellError);
+                }
                 break;
             case TripStep.OpenBell:
                 if (FindSummoningBell(player.Position) is { } nearbyBell &&
@@ -365,10 +372,13 @@ partial class WorkshopPlugin
 
         if (distance < StationApproach.InteractionRange)
         {
+            RecordRetainerTravel(RetainerTravelTiming.Direction.ToStation);
             FinishRetainerTrip(trip);
             return;
         }
 
+        if (trip.ReachedBell)
+            _retainerTravelTiming.Start(RetainerTravelTiming.Direction.ToStation);
         Vector3 interactionPosition = GetEventObjectInteractionPosition(station);
         var targets = trip.StationApproaches ??=
             StationApproach.GetTargets(interactionPosition, playerPosition, _stationReturnPosition);
@@ -387,6 +397,12 @@ partial class WorkshopPlugin
         }
 
         FailCraft($"Could not get within reach of the fabrication station ({distance:F1} yalms away). {error}");
+    }
+
+    private void RecordRetainerTravel(RetainerTravelTiming.Direction direction)
+    {
+        if (_retainerTravelTiming.Complete(direction))
+            _pluginInterface.SavePluginConfig(_configuration);
     }
 
     private void SkipUnneededTransfers(RetainerTrip trip)
@@ -554,6 +570,7 @@ partial class WorkshopPlugin
         if (_retainerTrip is not { } trip)
             return;
         _retainerTrip = null;
+        _retainerTravelTiming.Discard();
         if (trip.Step == TripStep.Transfer && _retainerTransfer.IsBusy)
             _retainerTransfer.Stop();
         try
@@ -642,6 +659,7 @@ partial class WorkshopPlugin
         public ulong RetainerId { get; set; }
         public Vector3[]? StationApproaches { get; set; }
         public int StationApproachIndex { get; set; }
+        public bool ReachedBell { get; set; }
         public bool SuppressedAutoRetainer { get; set; }
 
         public void GoTo(TripStep step)
