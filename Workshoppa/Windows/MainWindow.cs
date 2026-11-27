@@ -90,6 +90,9 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
             DrawClipboardMenu();
             ImGui.EndDisabled();
 
+            if (ImGui.MenuItem("Config"))
+                _plugin.OpenConfigWindow();
+
             ImGui.EndMenuBar();
         }
 

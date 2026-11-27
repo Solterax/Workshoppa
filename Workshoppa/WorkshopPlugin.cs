@@ -101,11 +101,11 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
 
         _pluginInterface.UiBuilder.Draw += _windowSystem.Draw;
         _pluginInterface.UiBuilder.OpenMainUi += OpenMainUi;
-        _pluginInterface.UiBuilder.OpenConfigUi += _configWindow.Toggle;
+        _pluginInterface.UiBuilder.OpenConfigUi += OpenConfigWindow;
         _framework.Update += FrameworkUpdate;
         _commandManager.AddHandler("/ws", new CommandInfo(ProcessCommand)
         {
-            HelpMessage = "Open UI"
+            HelpMessage = "Open Workshoppa. Use /ws c or /ws config for settings."
         });
         _commandManager.AddHandler("/workshoppa", new CommandInfo(ProcessCommand)
         {
@@ -384,11 +384,15 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
 
     private void ProcessCommand(string command, string arguments)
     {
-        if (arguments is "c" or "config")
-            _configWindow.Toggle();
+        string option = arguments.Trim();
+        if (option.Equals("c", StringComparison.OrdinalIgnoreCase) ||
+            option.Equals("config", StringComparison.OrdinalIgnoreCase))
+            OpenConfigWindow();
         else
             _mainWindow.Toggle(MainWindow.EOpenReason.Command);
     }
+
+    internal void OpenConfigWindow() => _configWindow.IsOpenAndUncollapsed = true;
 
     private void ProcessBuyCommand(string command, string arguments)
     {
@@ -423,7 +427,7 @@ public sealed partial class WorkshopPlugin : IDalamudPlugin
         _commandManager.RemoveHandler("/workshoppa");
         _commandManager.RemoveHandler("/ws");
         _pluginInterface.UiBuilder.Draw -= _windowSystem.Draw;
-        _pluginInterface.UiBuilder.OpenConfigUi -= _configWindow.Toggle;
+        _pluginInterface.UiBuilder.OpenConfigUi -= OpenConfigWindow;
         _pluginInterface.UiBuilder.OpenMainUi -= OpenMainUi;
         _framework.Update -= FrameworkUpdate;
         _queueNotification.Dispose();
