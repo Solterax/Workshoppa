@@ -633,8 +633,8 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
     private void DrawQueueEstimate()
     {
         double estimatedSeconds = 0;
-        long estimatedItems = 0;
-        long unknownItems = 0;
+        bool hasCraftEstimate = false;
+        bool hasUntimedCrafts = false;
         var planned = _configuration.AutomateRetainers
             ? _configuration.ItemQueue.Where(item => item.Quantity > 0)
             : _configuration.RunnableQueue;
@@ -643,10 +643,10 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
             if (GetCraftAverage(item.WorkshopItemId) is { } average)
             {
                 estimatedSeconds += average * item.Quantity;
-                estimatedItems += item.Quantity;
+                hasCraftEstimate = true;
             }
             else
-                unknownItems += item.Quantity;
+                hasUntimedCrafts = true;
         }
 
         if (_configuration.CurrentlyCraftedItem is { } current)
@@ -655,32 +655,23 @@ internal sealed class MainWindow : LWindow, IPersistableWindowConfig
                 _craftTiming.GetElapsedSeconds(current) is { } elapsed)
             {
                 estimatedSeconds += Math.Max(0, average - elapsed);
-                estimatedItems++;
+                hasCraftEstimate = true;
             }
             else
-                unknownItems++;
+                hasUntimedCrafts = true;
         }
 
-        var (trips, travelSeconds) = _plugin.GetRetainerTravelEstimate();
-        if (estimatedItems > 0 || (travelSeconds is > 0 && trips > 0))
+        double? travelSeconds = _plugin.GetRetainerTravelEstimate();
+        if (hasCraftEstimate || travelSeconds is > 0)
         {
-            var extra = unknownItems > 0 ? $" + {unknownItems:N0} crafts without estimates" : string.Empty;
-            string label = trips > 0 && travelSeconds != null ? "Estimated time remaining" : "Estimated active time remaining";
-            ImGui.TextWrapped($"{label}: {FormatDuration(estimatedSeconds + travelSeconds.GetValueOrDefault())}{extra}");
+            string duration = FormatDuration(estimatedSeconds + travelSeconds.GetValueOrDefault());
+            string qualifier = hasUntimedCrafts || travelSeconds == null ? " (partial)" : string.Empty;
+            ImGui.TextWrapped($"Remaining time: {duration}{qualifier}");
         }
-        else if (unknownItems > 0)
-            ImGui.TextDisabled("No time estimates for the remaining crafts.");
+        else if (hasUntimedCrafts || travelSeconds == null)
+            ImGui.TextDisabled("Remaining time: learning");
         else if (_configuration.ItemQueue.Any(item => item.IsPaused && item.Quantity > 0))
-            ImGui.TextDisabled("All queued crafts are paused.");
-
-        if (trips > 0)
-        {
-            string tripLabel = trips == 1 ? "trip" : "trips";
-            string timing = travelSeconds is { } seconds ? FormatDuration(seconds) : "waiting for travel times";
-            ImGui.TextWrapped($"Retainer travel: {trips:N0} planned {tripLabel} ({timing})");
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Uses measured travel to and from the bell. Sorting, transfers, and extra trips for full bags or missing materials are excluded.");
-        }
+            ImGui.TextDisabled("Remaining time: all queued crafts are paused.");
     }
 
     private void DrawCraftTimes()

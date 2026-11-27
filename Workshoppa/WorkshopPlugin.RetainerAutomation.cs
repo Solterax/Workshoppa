@@ -293,7 +293,8 @@ partial class WorkshopPlugin
                 }
                 else
                 {
-                    _retainerTravelTiming.Start(RetainerTravelTiming.Direction.ToBell);
+                    if (trip.CountsTowardRemainingTime)
+                        _retainerTravelTiming.Start(RetainerTravelTiming.Direction.ToBell);
                     if (_workshopNavigation.Update(player.Position, bell.Position, out _) is { } bellError)
                         FailCraft(bellError);
                 }
@@ -377,7 +378,7 @@ partial class WorkshopPlugin
             return;
         }
 
-        if (trip.ReachedBell)
+        if (trip.ReachedBell && trip.CountsTowardRemainingTime)
             _retainerTravelTiming.Start(RetainerTravelTiming.Direction.ToStation);
         Vector3 interactionPosition = GetEventObjectInteractionPosition(station);
         var targets = trip.StationApproaches ??=
@@ -642,6 +643,7 @@ partial class WorkshopPlugin
     private sealed class RetainerTrip(TripReason reason)
     {
         public TripReason Reason { get; } = reason;
+        public bool CountsTowardRemainingTime => Reason is not (TripReason.PrepareBatch or TripReason.BeginOperations);
         public TripStep Step { get; private set; }
         public long StepStarted { get; private set; } = Stopwatch.GetTimestamp();
         public TimeSpan Timeout => Step switch
