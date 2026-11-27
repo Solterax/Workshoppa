@@ -43,6 +43,8 @@ partial class WorkshopPlugin
     internal string? RetainerTripStatus => _retainerTrip is { } trip ? trip.Step switch
     {
         TripStep.ClearStation => "Closing the fabrication station.",
+        TripStep.OpenPlayerInventory or TripStep.SortPlayerInventory or TripStep.CloseSortedInventory or
+            TripStep.WaitForSortedInventoryClosed => "Sorting your inventory before depositing.",
         TripStep.FindBell => "Walking to the summoning bell.",
         TripStep.OpenInventory => "Selecting Entrust or withdraw items.",
         TripStep.StartTransfer => "Waiting for the selected retainer's inventory.",
@@ -260,7 +262,19 @@ partial class WorkshopPlugin
                 if (trip.Actions.Count == 0)
                     trip.GoTo(TripStep.Return);
                 else if (TrySuppressAutoRetainer(trip))
-                    trip.GoTo(TripStep.FindBell);
+                    trip.GoTo(trip.Actions.Peek().Materials == null ? TripStep.OpenPlayerInventory : TripStep.FindBell);
+                break;
+            case TripStep.OpenPlayerInventory:
+                OpenInventoryForDeposit(trip);
+                break;
+            case TripStep.SortPlayerInventory:
+                SortInventoryForDeposit(trip);
+                break;
+            case TripStep.CloseSortedInventory:
+                CloseSortedInventory(trip);
+                break;
+            case TripStep.WaitForSortedInventoryClosed:
+                WaitForSortedInventoryClosed(trip);
                 break;
             case TripStep.FindBell:
                 var bell = FindSummoningBell(player.Position);
@@ -320,7 +334,9 @@ partial class WorkshopPlugin
                 if (SelectRetainerMenuItem(2383))
                 {
                     _continueAt = DateTime.Now.AddMilliseconds(500);
-                    trip.GoTo(trip.Actions.Count > 0 ? TripStep.SelectRetainer : TripStep.CloseBell);
+                    trip.GoTo(trip.Actions.Count > 0 && !trip.SortBeforeReopeningBell
+                        ? TripStep.SelectRetainer
+                        : TripStep.CloseBell);
                 }
                 break;
             case TripStep.CloseBell:
@@ -328,8 +344,10 @@ partial class WorkshopPlugin
                 if (list != null && LAddon.IsAddonReady(list) && GetVisibleInventoryCycleAddon("SelectString") == null)
                 {
                     list->FireCallbackInt(-1);
-                    trip.GoTo(TripStep.Return);
+                    trip.GoTo(trip.SortBeforeReopeningBell ? TripStep.OpenPlayerInventory : TripStep.Return);
                 }
+                else if (list == null && !_condition[ConditionFlag.OccupiedSummoningBell])
+                    trip.GoTo(trip.SortBeforeReopeningBell ? TripStep.OpenPlayerInventory : TripStep.Return);
                 break;
             case TripStep.Return:
                 if (_condition[ConditionFlag.OccupiedSummoningBell] || _condition[ConditionFlag.OccupiedInEvent])
@@ -404,7 +422,16 @@ partial class WorkshopPlugin
         {
             if (_retainerTransfer.HasItemsToDeposit(action.Kind, action.DepositItems, requireRetainerSpace: true))
             {
-                FailCraft($"Some items that still fit on {action.Retainer} could not be deposited. Check both inventories and resume.");
+                if (ReferenceEquals(trip.RetriedDeposit, action))
+                {
+                    FailCraft($"Some items that still fit on {action.Retainer} could not be deposited after sorting and retrying. Check both inventories and resume.");
+                    return;
+                }
+
+                trip.RetriedDeposit = action;
+                trip.SortBeforeReopeningBell = true;
+                _pluginLog.Information($"A deposit on {action.Retainer} failed with space available. Closing the bell to sort and retry.");
+                LeaveRetainerInventory(trip);
                 return;
             }
 
@@ -423,6 +450,11 @@ partial class WorkshopPlugin
             return;
         }
 
+        LeaveRetainerInventory(trip);
+    }
+
+    private static unsafe void LeaveRetainerInventory(RetainerTrip trip)
+    {
         var agent = AgentRetainer.Instance();
         if (agent != null && agent->IsAgentActive())
             agent->Hide();
@@ -581,7 +613,11 @@ partial class WorkshopPlugin
     }
 
     private enum TripReason { PrepareBatch, MakeRoom, StoreBatch, ReplenishCraft, BeginOperations }
-    private enum TripStep { ClearStation, FindBell, OpenBell, SelectRetainer, OpenInventory, StartTransfer, Transfer, LeaveRetainer, CloseBell, Return }
+    private enum TripStep
+    {
+        ClearStation, OpenPlayerInventory, SortPlayerInventory, CloseSortedInventory, WaitForSortedInventoryClosed,
+        FindBell, OpenBell, SelectRetainer, OpenInventory, StartTransfer, Transfer, LeaveRetainer, CloseBell, Return,
+    }
 
     private sealed record RetainerAction(string Retainer, RetainerTransfer.TransferKind Kind,
         IReadOnlyList<Ingredient>? Materials = null, IReadOnlySet<uint>? DepositItems = null);
@@ -598,6 +634,8 @@ partial class WorkshopPlugin
             _ => TimeSpan.FromSeconds(15),
         };
         public Queue<RetainerAction> Actions { get; } = new();
+        public RetainerAction? RetriedDeposit { get; set; }
+        public bool SortBeforeReopeningBell { get; set; }
         public RetainerTransfer.TransferKind? LastCompletedTransferKind { get; set; }
         public Configuration.QueuedItem? NextBatch { get; set; }
         public int NextBatchQuantity { get; set; }
